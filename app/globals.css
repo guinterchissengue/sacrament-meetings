@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+:root {
+  --color-bg-primary: #f8fafc;
+  --color-surface: #ffffff;
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #334155;
+  --color-brand-navy: #0f172a;
+  --color-brand-accent: #1e40af;
+  --spacing-container: 72rem;
+}
+
+body {
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  line-height: 1.6;
+}
+
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .print\:hidden {
+    display: none !important;
+  }
+}
