@@ -25,11 +25,9 @@ export default function NavLinks() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-wrap items-center gap-2 sm:gap-6">
         {navItems.map((item) => {
           const isActive =
-            item.href === '/'
-              ? pathname === '/'
-              : item.href === '/meetings'
-              ? pathname === '/meetings'
-              : pathname.startsWith(item.href);
+            item.href === '/meetings'
+              ? pathname.startsWith('/meetings') && pathname !== '/meetings/current'
+              : pathname === item.href;
 
           return (
             <Link

@@ -1,16 +1,24 @@
 import type { SacramentMeeting } from './types';
 
-export function getMostRecentSundayISO(referenceDate: Date = new Date()): string {
-  const dayOfWeek = referenceDate.getDay(); // 0 (Sun) through 6 (Sat)
-  const sunday = new Date(referenceDate);
-  sunday.setDate(referenceDate.getDate() - dayOfWeek);
-  const year = sunday.getFullYear();
-  const month = String(sunday.getMonth() + 1).padStart(2, '0');
-  const day = String(sunday.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+/** Ward time zone, so "this Sunday" is the same on the server (UTC) and for local members. */
+export const WARD_TIME_ZONE = 'Africa/Maputo';
+
+/** Today's date in the ward time zone as 'YYYY-MM-DD'. */
+export function getTodayISO(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: WARD_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
 }
 
-const currentSundayISO = getMostRecentSundayISO();
+/** The most recent Sunday (today, if today is Sunday) as 'YYYY-MM-DD'. */
+export function getMostRecentSundayISO(now: Date = new Date()): string {
+  const date = new Date(`${getTodayISO(now)}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - date.getUTCDay());
+  return date.toISOString().slice(0, 10);
+}
 
 const meetings: SacramentMeeting[] = [
   {
@@ -129,7 +137,7 @@ const meetings: SacramentMeeting[] = [
   },
   {
     id: 6,
-    date: currentSundayISO === '2026-05-03' ? '2026-06-07' : currentSundayISO,
+    date: '2026-11-08',
     meetingType: 'regular',
     presiding: 'Bishop Smith',
     conducting: 'Brother Jones',
@@ -146,17 +154,29 @@ const meetings: SacramentMeeting[] = [
     closingHymn: { number: 241, title: 'Count Your Many Blessings' },
     closingPrayer: 'Brother Mabunda',
     announcements: [
-      'Current Sunday Sacrament Program — welcome visitors and ward members',
+      'Welcome visitors and ward members to our Sunday worship service',
       'Building cleaning assignment: Group B on Saturday at 8:00 AM'
     ]
   }
 ];
 
 export function getMeetings(date?: string | null): SacramentMeeting[] {
-  if (date) return meetings.filter(m => m.date === date);
+  if (date) return meetings.filter((m) => m.date === date);
   return meetings;
 }
 
 export function getMeetingById(id: number): SacramentMeeting | null {
-  return meetings.find(m => m.id === id) ?? null;
+  return meetings.find((m) => m.id === id) ?? null;
+}
+
+/**
+ * Meeting for the most recent Sunday. If none is scheduled for that exact date,
+ * falls back to the latest meeting on or before it; returns null if there is none.
+ */
+export function getCurrentMeeting(now: Date = new Date()): SacramentMeeting | null {
+  const sundayISO = getMostRecentSundayISO(now);
+  const past = meetings
+    .filter((m) => m.date <= sundayISO)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  return past[0] ?? null;
 }

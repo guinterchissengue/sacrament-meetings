@@ -19,7 +19,7 @@ export default function HomePage() {
           <div className="flex flex-wrap gap-4 pt-2">
             <Link
               href="/meetings/current"
-              className="bg-blue-800 hover:bg-blue-900 text-white font-semibold px-6 py-3 rounded-lg shadow-xs transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-800"
+              className="bg-brand hover:bg-brand-dark text-white font-semibold px-6 py-3 rounded-lg shadow-xs transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand"
             >
               View This Sunday&apos;s Program
             </Link>

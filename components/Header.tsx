@@ -1,12 +1,18 @@
 import Link from 'next/link';
+import { connection } from 'next/server';
+import { getTodayISO, WARD_TIME_ZONE } from '@/lib/meetings-db';
 import NavLinks from './NavLinks';
 
-export default function Header() {
-  const currentDate = new Date().toLocaleDateString('en-US', {
+export default async function Header() {
+  // Opt into request-time rendering so the date is today's, not the build date.
+  await connection();
+  const now = new Date();
+  const currentDate = now.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
+    timeZone: WARD_TIME_ZONE,
   });
 
   return (
@@ -24,7 +30,7 @@ export default function Header() {
           </p>
         </div>
         <div className="text-xs sm:text-sm font-medium text-amber-200 bg-slate-800/80 px-3 py-1.5 rounded-md border border-slate-700 self-start sm:self-auto">
-          <time dateTime={new Date().toISOString().split('T')[0]}>
+          <time dateTime={getTodayISO(now)}>
             {currentDate}
           </time>
         </div>

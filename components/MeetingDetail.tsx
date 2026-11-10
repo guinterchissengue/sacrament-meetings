@@ -1,6 +1,6 @@
-'use client';
-
 import Link from 'next/link';
+import PrintButton from './PrintButton';
+import { formatMeetingDate } from '@/lib/format';
 import type { MeetingType, SacramentMeeting } from '@/lib/types';
 
 interface MeetingDetailProps {
@@ -17,28 +17,18 @@ const typeDescriptions: Record<MeetingType, { title: string; isSacrament: boolea
 export default function MeetingDetail({ meeting }: MeetingDetailProps) {
   const meetingMeta = typeDescriptions[meeting.meetingType];
 
-  const handlePrint = () => {
-    window.print();
-  };
-
   return (
     <article className="max-w-3xl mx-auto">
       {/* Action Bar (hidden when printing) */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6 print:hidden">
         <Link
           href="/meetings"
-          className="inline-flex items-center text-sm font-semibold text-slate-800 hover:text-blue-800 bg-white border border-slate-300 px-3.5 py-2 rounded-lg shadow-xs transition-colors"
+          className="inline-flex items-center text-sm font-semibold text-slate-800 hover:text-brand bg-white border border-slate-300 px-3.5 py-2 rounded-lg shadow-xs transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-700"
         >
           &larr; Back to All Meetings
         </Link>
 
-        <button
-          type="button"
-          onClick={handlePrint}
-          className="inline-flex items-center gap-2 bg-blue-800 hover:bg-blue-900 text-white font-semibold text-sm px-4 py-2.5 rounded-lg shadow-xs transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-800"
-        >
-          <span>Print Program</span>
-        </button>
+        <PrintButton />
       </div>
 
       {/* Printable Program Sheet */}
@@ -48,11 +38,11 @@ export default function MeetingDetail({ meeting }: MeetingDetailProps) {
           <p className="text-xs font-bold uppercase tracking-widest text-slate-700 mb-1">
             The Church of Jesus Christ of Latter-day Saints &bull; Maxixe Ward
           </p>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+          <h1 className="font-serif text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
             {meetingMeta.title}
           </h1>
           <p className="text-base font-semibold text-slate-800 mt-1">
-            <time dateTime={meeting.date}>{meeting.date}</time>
+            <time dateTime={meeting.date}>{formatMeetingDate(meeting.date)}</time>
           </p>
 
           <dl className="mt-4 pt-4 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-slate-800 max-w-lg mx-auto">

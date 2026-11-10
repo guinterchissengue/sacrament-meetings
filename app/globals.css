@@ -1,18 +1,25 @@
 @import "tailwindcss";
 
-:root {
-  --color-bg-primary: #f8fafc;
+/* Design tokens: available as Tailwind utilities (bg-brand, text-ink, font-serif...) */
+@theme inline {
+  --color-brand: #1e40af;
+  --color-brand-dark: #1e3a8a;
   --color-surface: #ffffff;
-  --color-text-primary: #0f172a;
-  --color-text-secondary: #334155;
-  --color-brand-navy: #0f172a;
-  --color-brand-accent: #1e40af;
+  --color-page: #f8fafc;
+  --color-ink: #0f172a;
+  --color-ink-muted: #334155;
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-merriweather), ui-serif, Georgia, serif;
+}
+
+:root {
   --spacing-container: 72rem;
 }
 
 body {
-  background-color: var(--color-bg-primary);
-  color: var(--color-text-primary);
+  background-color: var(--color-page);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
   line-height: 1.6;
 }
 
@@ -22,7 +29,8 @@ body {
     color: #000000 !important;
   }
 
-  .print\:hidden {
-    display: none !important;
+  main {
+    max-width: none !important;
+    padding: 0 !important;
   }
 }
