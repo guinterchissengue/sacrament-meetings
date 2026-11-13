@@ -2,13 +2,7 @@
 
 Next.js (App Router) + TypeScript + Tailwind CSS app to plan, view and print weekly sacrament meeting programs.
 
-## Run
-```bash
-npm install
-npm run dev      # http://localhost:3000
-npm run lint
-npm run build
-```
+
 
 ## Routes
 | Route | Purpose |
@@ -21,3 +15,5 @@ npm run build
 | `GET /api/meetings/[id]` | 200 meeting, 400 invalid id, 404 not found |
 
 Data lives in `lib/meetings-db.ts` (in-memory, temporary).
+
+VERCEL: https://sacrament-meetings-ep6s8rm9d.vercel.app/
