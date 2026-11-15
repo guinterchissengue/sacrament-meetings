@@ -1,39 +1,60 @@
-"use client";
+'use client';
 
-import { useSearchParams, usePathname, useRouter } from "next/navigation";
-import { useDebouncedCallback } from "use-debounce";
+import { useEffect, useRef } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useDebouncedCallback } from 'use-debounce';
 
 export default function MeetingSearch() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
-  const { replace } = useRouter();
+  const { push } = useRouter();
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // O URL é a fonte de verdade: lemos e escrevemos ?query= e ?page=.
-  // Debounce de 300 ms evita uma consulta à BD por cada tecla.
+  // The URL is the source of truth: we read and write ?query= and ?page=.
+  // The 300 ms debounce avoids a database round-trip on every keystroke.
   const handleSearch = useDebouncedCallback((term: string) => {
     const params = new URLSearchParams(searchParams.toString());
-    params.set("page", "1"); // uma pesquisa nova volta sempre à página 1
+    params.set('page', '1'); // a new search always starts on page 1
     if (term.trim()) {
-      params.set("query", term.trim());
+      params.set('query', term.trim());
     } else {
-      params.delete("query");
+      params.delete('query');
     }
-    replace(`${pathname}?${params.toString()}`);
+
+    const next = `${pathname}?${params.toString()}`;
+    if (next !== `${pathname}?${searchParams.toString()}`) {
+      // push (not replace) so the browser Back button returns to the previous search
+      push(next, { scroll: false });
+    }
   }, 300);
 
+  // The input is uncontrolled (defaultValue), so when the user presses Back/Forward
+  // we copy the query from the URL into the input to keep both in sync.
+  useEffect(() => {
+    const syncInputWithUrl = () => {
+      if (inputRef.current) {
+        inputRef.current.value =
+          new URLSearchParams(window.location.search).get('query') ?? '';
+      }
+    };
+    window.addEventListener('popstate', syncInputWithUrl);
+    return () => window.removeEventListener('popstate', syncInputWithUrl);
+  }, []);
+
   return (
-    <div className="mb-6">
+    <div>
       <label htmlFor="meeting-search" className="sr-only">
         Search meetings
       </label>
       <input
+        ref={inputRef}
         id="meeting-search"
         type="search"
         aria-label="Search meetings by speaker, presiding, conducting, or meeting type"
         placeholder="Search by speaker, presiding, conducting, or type..."
-        defaultValue={searchParams.get("query") ?? ""}
-        onChange={(e) => handleSearch(e.target.value)}
-        className="w-full rounded-md border border-gray-400 px-4 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-600"
+        defaultValue={searchParams.get('query') ?? ''}
+        onChange={(event) => handleSearch(event.target.value)}
+        className="w-full rounded-lg border border-slate-400 bg-white px-4 py-2.5 text-base text-slate-900 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-700"
       />
     </div>
   );

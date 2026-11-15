@@ -23,6 +23,10 @@ const badgeStyles: Record<MeetingType, { label: string; classes: string }> = {
     label: 'General Conference (Non-Sacrament)',
     classes: 'bg-purple-100 text-purple-900 border-purple-300',
   },
+  special: {
+    label: 'Special Sacrament Meeting',
+    classes: 'bg-rose-100 text-rose-900 border-rose-300',
+  },
 };
 
 export default function MeetingCard({ meeting }: MeetingCardProps) {

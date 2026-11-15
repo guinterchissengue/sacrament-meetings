@@ -1,64 +1,67 @@
-import { neon } from "@neondatabase/serverless";
-import type { SacramentMeeting } from "@/lib/types";
+import { neon } from '@neondatabase/serverless';
+import { getMostRecentSundayISO } from './meeting-date';
+import type { SacramentMeeting } from './types';
 
 export const PAGE_SIZE = 5;
 
-// O cliente é criado dentro de uma função (e não no topo do ficheiro) para que
-// o `npm run build` não rebente quando DATABASE_URL ainda não está definida.
-// neon() devolve um "tagged template": cada valor interpolado vira um parâmetro
-// ($1, $2...), por isso não há risco de SQL injection.
+/**
+ * The client is created inside a function (not at module level) so `next build`
+ * does not fail when DATABASE_URL is not defined yet.
+ * neon() returns a tagged template: every interpolated value becomes a query
+ * parameter ($1, $2, ...), so user input can never be injected as SQL.
+ */
 function db() {
   const url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error(
-      "DATABASE_URL is not set. Run `vercel env pull .env.local` and restart the dev server."
+      'DATABASE_URL is not set. Run `vercel env pull .env.local` and restart the dev server.'
     );
   }
   return neon(url);
 }
 
-// Linha como vem da base de dados (snake_case).
+/** A row exactly as stored in PostgreSQL (snake_case columns). */
 type MeetingRow = {
   id: number;
   date: string;
-  meeting_type: SacramentMeeting["meetingType"];
+  meeting_type: SacramentMeeting['meetingType'];
   presiding: string;
   conducting: string;
-  announcements: string[];
-  opening_hymn: SacramentMeeting["openingHymn"];
+  announcements: string[] | null;
+  opening_hymn: SacramentMeeting['openingHymn'];
   opening_prayer: string;
-  ward_business: SacramentMeeting["wardBusiness"];
-  stake_business: boolean;
-  sacrament_hymn: SacramentMeeting["sacramentHymn"];
-  speakers: SacramentMeeting["speakers"];
-  closing_hymn: SacramentMeeting["closingHymn"];
+  ward_business: SacramentMeeting['wardBusiness'] | null;
+  stake_business: boolean | null;
+  sacrament_hymn: SacramentMeeting['sacramentHymn'];
+  speakers: SacramentMeeting['speakers'] | null;
+  closing_hymn: SacramentMeeting['closingHymn'];
   closing_prayer: string;
 };
 
-// Converte snake_case (BD) para o tipo camelCase da aplicação.
-// AJUSTA os nomes à tua interface SacramentMeeting em lib/types.ts.
-function mapRow(r: MeetingRow): SacramentMeeting {
+/** Converts a database row (snake_case) into the app's SacramentMeeting type. */
+function mapRow(row: MeetingRow): SacramentMeeting {
   return {
-    id: r.id,
-    date: r.date,
-    meetingType: r.meeting_type,
-    presiding: r.presiding,
-    conducting: r.conducting,
-    announcements: r.announcements,
-    openingHymn: r.opening_hymn,
-    openingPrayer: r.opening_prayer,
-    wardBusiness: r.ward_business,
-    stakeBusiness: r.stake_business,
-    sacramentHymn: r.sacrament_hymn,
-    speakers: r.speakers,
-    closingHymn: r.closing_hymn,
-    closingPrayer: r.closing_prayer,
+    id: row.id,
+    date: row.date,
+    meetingType: row.meeting_type,
+    presiding: row.presiding,
+    conducting: row.conducting,
+    announcements: row.announcements ?? [],
+    openingHymn: row.opening_hymn,
+    openingPrayer: row.opening_prayer,
+    wardBusiness: row.ward_business ?? [],
+    stakeBusiness: row.stake_business ?? false,
+    sacramentHymn: row.sacrament_hymn,
+    speakers: row.speakers ?? [],
+    closingHymn: row.closing_hymn,
+    closingPrayer: row.closing_prayer,
   };
 }
 
-/** Todas as reuniões (ou só as de uma data YYYY-MM-DD). */
-export async function getMeetings(date?: string): Promise<SacramentMeeting[]> {
+/** All meetings (newest first), or only the ones on a date ('YYYY-MM-DD'). */
+export async function getMeetings(date?: string | null): Promise<SacramentMeeting[]> {
   const sql = db();
+  // to_char() returns the DATE as a plain 'YYYY-MM-DD' string (no timezone shift).
   const rows = date
     ? await sql`
         SELECT id, to_char(date, 'YYYY-MM-DD') AS date, meeting_type, presiding,
@@ -75,13 +78,11 @@ export async function getMeetings(date?: string): Promise<SacramentMeeting[]> {
                closing_hymn, closing_prayer
         FROM meetings
         ORDER BY date DESC`;
-  return rows.map((r) => mapRow(r as MeetingRow));
+  return rows.map((row) => mapRow(row as MeetingRow));
 }
 
-/** Uma reunião pelo id, ou undefined se não existir. */
-export async function getMeetingById(
-  id: number
-): Promise<SacramentMeeting | undefined> {
+/** One meeting by id, or null if it does not exist. */
+export async function getMeetingById(id: number): Promise<SacramentMeeting | null> {
   const sql = db();
   const rows = await sql`
     SELECT id, to_char(date, 'YYYY-MM-DD') AS date, meeting_type, presiding,
@@ -90,20 +91,41 @@ export async function getMeetingById(
            closing_hymn, closing_prayer
     FROM meetings
     WHERE id = ${id}`;
-  return rows[0] ? mapRow(rows[0] as MeetingRow) : undefined;
+  return rows[0] ? mapRow(rows[0] as MeetingRow) : null;
 }
 
 /**
- * Pesquisa + paginação para a lista /meetings.
- * Procura em presiding, conducting, meeting_type e nos oradores (JSONB como texto).
+ * Meeting for the most recent Sunday (in the ward time zone). If none exists
+ * for that exact date, falls back to the latest meeting on or before it;
+ * returns null if there is none.
+ */
+export async function getCurrentMeeting(now: Date = new Date()): Promise<SacramentMeeting | null> {
+  const sql = db();
+  const sundayISO = getMostRecentSundayISO(now);
+  const rows = await sql`
+    SELECT id, to_char(date, 'YYYY-MM-DD') AS date, meeting_type, presiding,
+           conducting, announcements, opening_hymn, opening_prayer,
+           ward_business, stake_business, sacrament_hymn, speakers,
+           closing_hymn, closing_prayer
+    FROM meetings
+    WHERE date <= ${sundayISO}
+    ORDER BY date DESC
+    LIMIT 1`;
+  return rows[0] ? mapRow(rows[0] as MeetingRow) : null;
+}
+
+/**
+ * Search + pagination for the /meetings list.
+ * Matches the presiding / conducting names, the meeting type and the NAMES of
+ * speakers / musical numbers (case-insensitive). PAGE_SIZE meetings per page.
  */
 export async function searchMeetings(
   query: string,
   page: number
 ): Promise<{ meetings: SacramentMeeting[]; totalPages: number }> {
   const sql = db();
-  // Escapa \ % _ para que o utilizador não os use como wildcards do LIKE.
-  const pattern = `%${query.trim().replace(/[\\%_]/g, "\\$&")}%`;
+  // Escape \ % _ so the user cannot use them as LIKE wildcards.
+  const pattern = `%${query.trim().replace(/[\\%_]/g, '\\$&')}%`;
   const safePage = Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1;
   const offset = (safePage - 1) * PAGE_SIZE;
 
@@ -116,7 +138,10 @@ export async function searchMeetings(
     WHERE presiding ILIKE ${pattern}
        OR conducting ILIKE ${pattern}
        OR meeting_type ILIKE ${pattern}
-       OR speakers::text ILIKE ${pattern}
+       OR EXISTS (
+            SELECT 1 FROM jsonb_array_elements(speakers) AS s
+            WHERE s->>'name' ILIKE ${pattern}
+          )
     ORDER BY date DESC
     LIMIT ${PAGE_SIZE} OFFSET ${offset}`;
 
@@ -126,35 +151,38 @@ export async function searchMeetings(
     WHERE presiding ILIKE ${pattern}
        OR conducting ILIKE ${pattern}
        OR meeting_type ILIKE ${pattern}
-       OR speakers::text ILIKE ${pattern}`;
+       OR EXISTS (
+            SELECT 1 FROM jsonb_array_elements(speakers) AS s
+            WHERE s->>'name' ILIKE ${pattern}
+          )`;
 
   return {
-    meetings: rows.map((r) => mapRow(r as MeetingRow)),
+    meetings: rows.map((row) => mapRow(row as MeetingRow)),
     totalPages: Math.max(1, Math.ceil(Number(count[0].total) / PAGE_SIZE)),
   };
 }
 
-// ---- Stubs: serão ligados à base de dados na Semana 04 (formulários) ----
+// ---- Stubs: these will be wired to the database in Week 04 (forms) ----
 
 export async function addMeeting(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _meeting: Omit<SacramentMeeting, "id">
+  _meeting: Omit<SacramentMeeting, 'id'>
 ): Promise<SacramentMeeting> {
-  throw new Error("addMeeting: not implemented until Week 04");
+  throw new Error('addMeeting: not implemented until Week 04');
 }
 
 export async function updateMeeting(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _id: number,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _changes: Partial<Omit<SacramentMeeting, "id">>
-): Promise<SacramentMeeting | undefined> {
-  throw new Error("updateMeeting: not implemented until Week 04");
+  _changes: Partial<Omit<SacramentMeeting, 'id'>>
+): Promise<SacramentMeeting | null> {
+  throw new Error('updateMeeting: not implemented until Week 04');
 }
 
 export async function deleteMeeting(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _id: number
 ): Promise<boolean> {
-  throw new Error("deleteMeeting: not implemented until Week 04");
+  throw new Error('deleteMeeting: not implemented until Week 04');
 }

@@ -1,91 +1,19 @@
--- 10 reuniões de exemplo (>= 8 exigidas) com tipos, presidentes e oradores variados.
--- Dá 2 páginas na paginação (5 por página). "Smith" aparece em 3 reuniões
--- e "regular"/"testimony" em vários registos, para testar a pesquisa.
--- Os formatos JSON de hinos/oradores/ward_business têm de coincidir com os teus
--- tipos em lib/types.ts: ajusta as chaves se forem diferentes.
--- É seguro correr mais de uma vez: ON CONFLICT (date) DO NOTHING.
+-- Seed data: 10 sample meetings (the original in-memory data + extra records,
+-- so the list has 2 pages and every meeting type is represented).
+-- Safe to run more than once: ON CONFLICT (date) DO NOTHING.
 INSERT INTO meetings
   (date, meeting_type, presiding, conducting, announcements, opening_hymn,
    opening_prayer, ward_business, stake_business, sacrament_hymn, speakers,
    closing_hymn, closing_prayer)
 VALUES
-('2026-01-04', 'testimony', 'President David Carter', 'Aaron Reed',
- ARRAY['Fast Sunday: fast offerings can be given online', 'Young adult activity Friday at 7 PM'],
- '{"number":2,"title":"The Spirit of God"}', 'Sister Maria Costa',
- '[]', false,
- '{"number":169,"title":"As Now We Take the Sacrament"}',
- '[]',
- '{"number":136,"title":"I Know That My Redeemer Lives"}', 'Brother Paulo Tembe'),
-
-('2026-01-11', 'regular', 'President David Carter', 'Aaron Reed',
- ARRAY['Institute classes resume Tuesday'],
- '{"number":85,"title":"How Firm a Foundation"}', 'Brother Daniel Smith',
- '[{"type":"sustain","name":"Sister Ana Mabunda","calling":"Relief Society Secretary"}]', false,
- '{"number":170,"title":"God, Our Father, Hear Us Pray"}',
- '[{"name":"Sister Emma Smith","topic":"Faith in Jesus Christ"},{"name":"Brother Lucas Johnson","topic":"Service"}]',
- '{"number":19,"title":"We Thank Thee, O God, for a Prophet"}', 'Sister Grace Okafor'),
-
-('2026-01-18', 'regular', 'Brother Samuel Lee', 'Aaron Reed',
- ARRAY['Choir practice after the meeting'],
- '{"number":26,"title":"Praise to the Man"}', 'Brother Tiago Nhantumbo',
- '[]', false,
- '{"number":172,"title":"In Humility, Our Savior"}',
- '[{"name":"Sister Helena Garcia","topic":"Gratitude"},{"name":"Brother Marcos Brown","topic":"The Book of Mormon"}]',
- '{"number":98,"title":"I Need Thee Every Hour"}', 'Sister Emma Smith'),
-
-('2026-01-25', 'special', 'President David Carter', 'Samuel Lee',
- ARRAY['Special musical program tonight'],
- '{"number":2,"title":"The Spirit of God"}', 'Sister Rita Johnson',
- '[{"type":"release","name":"Brother Marcos Brown","calling":"Activities Committee Chair"}]', false,
- '{"number":169,"title":"As Now We Take the Sacrament"}',
- '[{"name":"Brother Daniel Smith","topic":"Temples and family history"}]',
- '{"number":33,"title":"Now Let Us Rejoice"}', 'Brother Paulo Tembe'),
-
-('2026-02-01', 'testimony', 'President David Carter', 'Aaron Reed',
- ARRAY['Fast Sunday: fast offerings can be given online'],
- '{"number":30,"title":"Come, Come, Ye Saints"}', 'Sister Helena Garcia',
- '[]', false,
- '{"number":170,"title":"God, Our Father, Hear Us Pray"}',
- '[]',
- '{"number":136,"title":"I Know That My Redeemer Lives"}', 'Brother Tiago Nhantumbo'),
-
-('2026-02-08', 'regular', 'Brother Samuel Lee', 'Aaron Reed',
- ARRAY['Service project Saturday morning'],
- '{"number":85,"title":"How Firm a Foundation"}', 'Brother Lucas Johnson',
- '[]', false,
- '{"number":172,"title":"In Humility, Our Savior"}',
- '[{"name":"Sister Rita Johnson","topic":"Hope"},{"name":"Brother Paulo Tembe","topic":"Missionary work"}]',
- '{"number":237,"title":"Do What Is Right"}', 'Sister Ana Mabunda'),
-
-('2026-02-15', 'stake', 'President Michael Torres', 'President David Carter',
- ARRAY['Stake leaders are visiting the branch today'],
- '{"number":2,"title":"The Spirit of God"}', 'Sister Grace Okafor',
- '[]', true,
- '{"number":169,"title":"As Now We Take the Sacrament"}',
- '[{"name":"President Michael Torres","topic":"Gathering Israel"},{"name":"Sister Emma Smith","topic":"Strengthening the rising generation"}]',
- '{"number":19,"title":"We Thank Thee, O God, for a Prophet"}', 'Brother Daniel Smith'),
-
-('2026-02-22', 'regular', 'President David Carter', 'Samuel Lee',
- ARRAY['Family home evening ideas available in the foyer'],
- '{"number":30,"title":"Come, Come, Ye Saints"}', 'Brother Marcos Brown',
- '[{"type":"sustain","name":"Brother Tiago Nhantumbo","calling":"Elders Quorum President"}]', false,
- '{"number":170,"title":"God, Our Father, Hear Us Pray"}',
- '[{"name":"Brother Tiago Nhantumbo","topic":"Ministering"},{"name":"Sister Maria Costa","topic":"The Atonement"}]',
- '{"number":98,"title":"I Need Thee Every Hour"}', 'Sister Rita Johnson'),
-
-('2026-03-01', 'general', 'President David Carter', 'Aaron Reed',
- ARRAY['General broadcast viewing follows sacrament meeting'],
- '{"number":26,"title":"Praise to the Man"}', 'Sister Maria Costa',
- '[]', false,
- '{"number":172,"title":"In Humility, Our Savior"}',
- '[{"name":"Brother Samuel Lee","topic":"Following the living prophet"}]',
- '{"number":33,"title":"Now Let Us Rejoice"}', 'Brother Lucas Johnson'),
-
-('2026-11-15', 'regular', 'President David Carter', 'Aaron Reed',
- ARRAY['Thanksgiving dinner sign-up in the foyer'],
- '{"number":2,"title":"The Spirit of God"}', 'Sister Helena Garcia',
- '[]', false,
- '{"number":169,"title":"As Now We Take the Sacrament"}',
- '[{"name":"Sister Grace Okafor","topic":"Gratitude in all things"},{"name":"Brother Samuel Lee","topic":"Christlike service"}]',
- '{"number":136,"title":"I Know That My Redeemer Lives"}', 'Brother Paulo Tembe')
+('2026-05-03', 'regular', 'Bishop Smith', 'Brother Jones', ARRAY['Ward temple night: Friday, May 8 at 6:30 PM', 'Youth combined activity this Wednesday at 7:00 PM']::text[], '{"number":2,"title":"The Spirit of God"}', 'Sister Williams', '[{"description":"Sustaining of new Primary president"}]', false, '{"number":169,"title":"In Remembrance of Thy Suffering"}', '[{"name":"Sister Brown","topic":"Faith in Jesus Christ","type":"speaker"},{"name":"Youth Choir","topic":"I Stand All Amazed","type":"musical-number"},{"name":"Brother Wilson","topic":"Enduring to the End","type":"speaker"}]', '{"number":31,"title":"O God, Our Help in Ages Past"}', 'Brother Davis'),
+('2026-05-10', 'testimony', 'Bishop Smith', 'Bishop Smith', ARRAY['Fast offerings may be submitted to a member of the bishopric or online', 'Relief Society ministering interviews scheduled this week']::text[], '{"number":136,"title":"I Know That My Redeemer Lives"}', 'Brother Johnson', '[{"description":"Release of Sunday School Gospel Doctrine teachers with heartfelt thanks"},{"description":"Welcome of new ward members"}]', false, '{"number":181,"title":"Jesus of Nazareth, Savior and King"}', '[{"name":"Congregation","topic":"Bearing of Fast and Testimony","type":"speaker"}]', '{"number":67,"title":"Glory to God on High"}', 'Sister Martinez'),
+('2026-05-17', 'regular', 'Bishop Smith', 'Brother Clark', ARRAY['Bishopric youth discussions after the second-hour block', 'Ward choir practice at 3:30 PM in the chapel']::text[], '{"number":85,"title":"How Firm a Foundation"}', 'Brother Anderson', '[]', false, '{"number":193,"title":"I Stand All Amazed"}', '[{"name":"Brother Thomas","topic":"Service and Charity in the Community","type":"speaker"},{"name":"Primary Children Ensemble","topic":"I Am a Child of God","type":"musical-number"},{"name":"Sister White","topic":"Strengthening the Home Through Prayer","type":"speaker"}]', '{"number":252,"title":"Put Your Shoulder to the Wheel"}', 'Sister Lee'),
+('2026-05-24', 'stake', 'Stake President Miller', 'President Miller', ARRAY['Stake Conference general session convenes at the Stake Center at 10:00 AM', 'No ward classes held today']::text[], '{"number":6,"title":"Redeemer of Israel"}', 'Brother King', '[{"description":"Annual Stake Conference general session"}]', true, '{"number":196,"title":"Jesus, Once of Humble Birth"}', '[{"name":"Sister Carla Mendes","topic":"Finding Joy in Keeping Covenants","type":"speaker"},{"name":"Stake Combined Choir","topic":"Come, Thou Fount of Every Blessing","type":"musical-number"},{"name":"President Miller","topic":"Building Zion in Our Stake","type":"speaker"}]', '{"number":89,"title":"The Lord Is My Light"}', 'Sister Young'),
+('2026-05-31', 'general', 'First Presidency', 'General Authorities', ARRAY['Members are invited to view the General Conference broadcast online or at the meetinghouse']::text[], '{"number":19,"title":"We Thank Thee, O God, for a Prophet"}', 'General Authority Seventy', '[]', true, '{"number":175,"title":"O God, the Eternal Father"}', '[{"name":"General Conference Broadcast","topic":"Messages from Living Prophets and Apostles","type":"speaker"},{"name":"Tabernacle Choir","topic":"Press Forward, Saints","type":"musical-number"}]', '{"number":152,"title":"God Be with You Till We Meet Again"}', 'General Officer'),
+('2026-06-07', 'testimony', 'Bishop Smith', 'Bishop Smith', ARRAY['Fast offerings may be submitted to a member of the bishopric or online']::text[], '{"number":30,"title":"Come, Come, Ye Saints"}', 'Brother Tembe', '[]', false, '{"number":172,"title":"In Humility, Our Savior"}', '[{"name":"Congregation","topic":"Bearing of Fast and Testimony","type":"speaker"}]', '{"number":98,"title":"I Need Thee Every Hour"}', 'Sister Nhantumbo'),
+('2026-06-14', 'special', 'Counselor Cossa', 'Brother Mabunda', ARRAY['Special youth-led sacrament meeting', 'Light refreshments after the meeting']::text[], '{"number":2,"title":"The Spirit of God"}', 'Sister Helena', '[{"description":"Recognition of graduating youth"}]', false, '{"number":169,"title":"As Now We Take the Sacrament"}', '[{"name":"Brother Cossa","topic":"Preparing to Serve the Lord","type":"speaker"},{"name":"Youth Choir","topic":"Do What Is Right","type":"musical-number"},{"name":"Sister Nhantumbo","topic":"The Power of Youth Testimony","type":"speaker"}]', '{"number":26,"title":"Praise to the Man"}', 'Brother Tembe'),
+('2026-06-21', 'regular', 'Bishop Smith', 'Brother Clark', ARRAY['Ward choir practice at 3:30 PM in the chapel']::text[], '{"number":85,"title":"How Firm a Foundation"}', 'Brother Anderson', '[]', false, '{"number":193,"title":"I Stand All Amazed"}', '[{"name":"Sister Mendes","topic":"Gratitude in Daily Life","type":"speaker"},{"name":"Brother Wilson","topic":"Ministering as the Savior Ministers","type":"speaker"}]', '{"number":33,"title":"Now Let Us Rejoice"}', 'Sister Lee'),
+('2026-11-08', 'regular', 'Bishop Smith', 'Brother Jones', ARRAY['Welcome visitors and ward members to our Sunday worship service', 'Building cleaning assignment: Group B on Saturday at 8:00 AM']::text[], '{"number":92,"title":"For the Beauty of the Earth"}', 'Sister Chissengue', '[{"description":"Sustaining of newly called Youth Sunday School advisors"}]', false, '{"number":172,"title":"In Humility, Our Savior"}', '[{"name":"Brother Mateus","topic":"Walking in the Covenant Path","type":"speaker"},{"name":"Ward Quartet","topic":"Be Still, My Soul","type":"musical-number"},{"name":"Sister Helena","topic":"The Blessings of the Sacrament","type":"speaker"}]', '{"number":241,"title":"Count Your Many Blessings"}', 'Brother Mabunda'),
+('2026-11-15', 'regular', 'Bishop Smith', 'Brother Jones', ARRAY['Welcome visitors and ward members to our Sunday worship service']::text[], '{"number":136,"title":"I Know That My Redeemer Lives"}', 'Brother Mateus', '[{"description":"Sustaining of a new Elders Quorum secretary"}]', false, '{"number":172,"title":"In Humility, Our Savior"}', '[{"name":"Sister Helena","topic":"Gratitude in All Things","type":"speaker"},{"name":"Ward Quartet","topic":"Be Still, My Soul","type":"musical-number"},{"name":"Brother Mabunda","topic":"Christlike Service","type":"speaker"}]', '{"number":241,"title":"Count Your Many Blessings"}', 'Sister Chissengue')
 ON CONFLICT (date) DO NOTHING;

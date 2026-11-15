@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { connection } from 'next/server';
-import { getTodayISO, WARD_TIME_ZONE } from '@/lib/meetings-db';
+import { getTodayISO, WARD_TIME_ZONE } from '@/lib/meeting-date';
 import NavLinks from './NavLinks';
 
 export default async function Header() {

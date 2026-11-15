@@ -1,20 +1,20 @@
-import { Suspense } from "react";
-import { redirect } from "next/navigation";
-import { searchMeetings } from "@/lib/meetings-db";
-import MeetingCard from "@/components/MeetingCard";
-import MeetingSearch from "@/components/MeetingSearch";
-import Pagination from "@/components/Pagination";
+import { Suspense } from 'react';
+import { redirect } from 'next/navigation';
+import MeetingCard from '@/components/MeetingCard';
+import MeetingSearch from '@/components/MeetingSearch';
+import Pagination from '@/components/Pagination';
+import { searchMeetings } from '@/lib/meetings-db';
 
 type SearchParams = Promise<{
   query?: string | string[];
   page?: string | string[];
 }>;
 
-// Um parâmetro repetido (?query=a&query=b) chega como array: usamos o primeiro.
+/** A repeated parameter (?query=a&query=b) arrives as an array: use the first value. */
 const first = (value?: string | string[]) =>
-  (Array.isArray(value) ? value[0] : value) ?? "";
+  (Array.isArray(value) ? value[0] : value) ?? '';
 
-export default async function MeetingsPage({
+export default async function MeetingsListPage({
   searchParams,
 }: {
   searchParams: SearchParams;
@@ -28,39 +28,41 @@ export default async function MeetingsPage({
 
   const { meetings, totalPages } = await searchMeetings(query, requestedPage);
 
-  // ?page=99 (fora do intervalo) -> leva o utilizador para a última página válida.
+  // ?page=99 (out of range) -> send the user to the last valid page.
   if (requestedPage > totalPages) {
     const qs = new URLSearchParams();
-    if (query) qs.set("query", query);
-    qs.set("page", String(totalPages));
+    if (query) qs.set('query', query);
+    qs.set('page', String(totalPages));
     redirect(`/meetings?${qs.toString()}`);
   }
 
   return (
-    <div>
-      <h1 className="mb-6 text-3xl font-bold">Sacrament Meeting Programs</h1>
+    <section aria-labelledby="meetings-list-heading" className="space-y-4">
+      <h1 id="meetings-list-heading" className="text-2xl font-bold">
+        All Meetings
+      </h1>
 
       <Suspense fallback={null}>
         <MeetingSearch />
       </Suspense>
 
       {meetings.length === 0 ? (
-        <p role="status" className="py-8 text-center text-gray-700">
-          No meetings found{query ? ` for "${query}"` : ""}.
+        <p role="status" className="text-slate-700">
+          {query
+            ? `No meetings found for "${query}".`
+            : 'No meetings have been scheduled yet.'}
         </p>
       ) : (
-        <ul className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {meetings.map((meeting) => (
-            <li key={meeting.id}>
-              <MeetingCard meeting={meeting} />
-            </li>
+            <MeetingCard key={meeting.id} meeting={meeting} />
           ))}
-        </ul>
+        </div>
       )}
 
       <Suspense fallback={null}>
         <Pagination totalPages={totalPages} />
       </Suspense>
-    </div>
+    </section>
   );
 }

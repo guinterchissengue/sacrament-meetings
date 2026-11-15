@@ -12,6 +12,7 @@ const typeDescriptions: Record<MeetingType, { title: string; isSacrament: boolea
   testimony: { title: 'Fast & Testimony Sacrament Meeting', isSacrament: true },
   stake: { title: 'Stake Conference Session (Non-Sacrament Meeting)', isSacrament: false },
   general: { title: 'General Conference Session (Non-Sacrament Meeting)', isSacrament: false },
+  special: { title: 'Special Sacrament Meeting', isSacrament: true },
 };
 
 export default function MeetingDetail({ meeting }: MeetingDetailProps) {
