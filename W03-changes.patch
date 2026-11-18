@@ -1,0 +1,1121 @@
+diff --git a/README.md b/README.md
+index b44bdb2..dce2ba4 100644
+--- a/README.md
++++ b/README.md
+@@ -1,19 +1,27 @@
+ # Sacrament Meeting Planner
+ 
+-Next.js (App Router) + TypeScript + Tailwind CSS app to plan, view and print weekly sacrament meeting programs.
+-
+-
++Next.js (App Router) + TypeScript + Tailwind CSS app to plan, view and print weekly sacrament meeting programs. Meeting data is stored in a **PostgreSQL database (Neon on Vercel)**.
+ 
+ ## Routes
+ | Route | Purpose |
+ |---|---|
+ | `/` | Landing page |
+-| `/meetings` | All meetings (fetches `/api/meetings`) |
+-| `/meetings/[id]` | Full agenda + print (fetches `/api/meetings/[id]`) |
+-| `/meetings/current` | Redirects to the most recent Sunday's meeting |
+-| `GET /api/meetings[?date=YYYY-MM-DD]` | List / filter meetings |
++| `/meetings` | Paginated list (5 per page) with URL-based search: `?query=smith&page=2` |
++| `/meetings/[id]` | Full agenda + print view |
++| `/meetings/current` | Redirects to the most recent Sunday's meeting (ward time zone, resolved on the server) |
++| `GET /api/meetings[?date=YYYY-MM-DD]` | List / filter meetings (400 if the date is invalid) |
+ | `GET /api/meetings/[id]` | 200 meeting, 400 invalid id, 404 not found |
++| `/meetings/new`, `/meetings/[id]/edit` | Admin placeholders (forms arrive in Week 04) |
++
++Route groups: `app/(public)` holds the member-facing pages (with their own layout and loading skeleton) and `app/(admin)` holds the leader-facing pages. Group folders do not appear in URLs.
++
++## Database setup
++1. In Vercel, create a **Neon** database (Storage) and connect it to this project.
++2. `vercel link` then `vercel env pull .env.local` (this creates `DATABASE_URL`; `.env.local` is git-ignored).
++3. Run `db/schema.sql` and then `db/seed.sql` in Vercel -> Storage -> your database -> **Query**.
++4. `npm install` and `npm run dev`.
+ 
+-Data lives in `lib/meetings-db.ts` (in-memory, temporary).
++## Scripts
++`npm run dev` · `npm run build` · `npm run lint`
+ 
+-VERCEL: https://sacrament-meetings-ep6s8rm9d.vercel.app/
+\ No newline at end of file
++VERCEL: https://sacrament-meetings-ep6s8rm9d.vercel.app/
+diff --git a/app/meetings/[id]/not-found.tsx b/app/(public)/meetings/[id]/not-found.tsx
+similarity index 100%
+rename from app/meetings/[id]/not-found.tsx
+rename to app/(public)/meetings/[id]/not-found.tsx
+diff --git a/app/(public)/meetings/[id]/page.tsx b/app/(public)/meetings/[id]/page.tsx
+new file mode 100644
+index 0000000..533419c
+--- /dev/null
++++ b/app/(public)/meetings/[id]/page.tsx
+@@ -0,0 +1,25 @@
++import { notFound } from 'next/navigation';
++import MeetingDetail from '@/components/MeetingDetail';
++import { getMeetingById } from '@/lib/meetings-db';
++
++interface MeetingDetailPageProps {
++  params: Promise<{ id: string }>;
++}
++
++const MAX_INT4 = 2_147_483_647; // SERIAL limit: larger ids would make PostgreSQL throw
++
++export default async function MeetingDetailPage({ params }: MeetingDetailPageProps) {
++  const { id } = await params;
++
++  // Only plain positive integers are valid ids ("abc", "1e3", "0x10" -> 404 page).
++  if (!/^\d+$/.test(id) || Number(id) < 1 || Number(id) > MAX_INT4) {
++    notFound();
++  }
++
++  const meeting = await getMeetingById(Number(id));
++  if (!meeting) {
++    notFound();
++  }
++
++  return <MeetingDetail meeting={meeting} />;
++}
+diff --git a/app/(public)/meetings/current/page.tsx b/app/(public)/meetings/current/page.tsx
+new file mode 100644
+index 0000000..63bca93
+--- /dev/null
++++ b/app/(public)/meetings/current/page.tsx
+@@ -0,0 +1,11 @@
++import { redirect } from 'next/navigation';
++import { getCurrentMeeting } from '@/lib/meetings-db';
++
++export const dynamic = 'force-dynamic';
++
++export default async function CurrentMeetingRedirectPage() {
++  // The "current Sunday" is always resolved on the server in the ward time zone
++  // (see lib/meeting-date.ts), so it never depends on the visitor's browser.
++  const meeting = await getCurrentMeeting();
++  redirect(meeting ? `/meetings/${meeting.id}` : '/meetings');
++}
+diff --git a/app/meetings/layout.tsx b/app/(public)/meetings/layout.tsx
+similarity index 100%
+rename from app/meetings/layout.tsx
+rename to app/(public)/meetings/layout.tsx
+diff --git a/app/(public)/meetings/page.tsx b/app/(public)/meetings/page.tsx
+index 8ad7c6c..40eb03a 100644
+--- a/app/(public)/meetings/page.tsx
++++ b/app/(public)/meetings/page.tsx
+@@ -1,20 +1,20 @@
+-import { Suspense } from "react";
+-import { redirect } from "next/navigation";
+-import { searchMeetings } from "@/lib/meetings-db";
+-import MeetingCard from "@/components/MeetingCard";
+-import MeetingSearch from "@/components/MeetingSearch";
+-import Pagination from "@/components/Pagination";
++import { Suspense } from 'react';
++import { redirect } from 'next/navigation';
++import MeetingCard from '@/components/MeetingCard';
++import MeetingSearch from '@/components/MeetingSearch';
++import Pagination from '@/components/Pagination';
++import { searchMeetings } from '@/lib/meetings-db';
+ 
+ type SearchParams = Promise<{
+   query?: string | string[];
+   page?: string | string[];
+ }>;
+ 
+-// Um parâmetro repetido (?query=a&query=b) chega como array: usamos o primeiro.
++/** A repeated parameter (?query=a&query=b) arrives as an array: use the first value. */
+ const first = (value?: string | string[]) =>
+-  (Array.isArray(value) ? value[0] : value) ?? "";
++  (Array.isArray(value) ? value[0] : value) ?? '';
+ 
+-export default async function MeetingsPage({
++export default async function MeetingsListPage({
+   searchParams,
+ }: {
+   searchParams: SearchParams;
+@@ -28,39 +28,41 @@ export default async function MeetingsPage({
+ 
+   const { meetings, totalPages } = await searchMeetings(query, requestedPage);
+ 
+-  // ?page=99 (fora do intervalo) -> leva o utilizador para a última página válida.
++  // ?page=99 (out of range) -> send the user to the last valid page.
+   if (requestedPage > totalPages) {
+     const qs = new URLSearchParams();
+-    if (query) qs.set("query", query);
+-    qs.set("page", String(totalPages));
++    if (query) qs.set('query', query);
++    qs.set('page', String(totalPages));
+     redirect(`/meetings?${qs.toString()}`);
+   }
+ 
+   return (
+-    <div>
+-      <h1 className="mb-6 text-3xl font-bold">Sacrament Meeting Programs</h1>
++    <section aria-labelledby="meetings-list-heading" className="space-y-4">
++      <h1 id="meetings-list-heading" className="text-2xl font-bold">
++        All Meetings
++      </h1>
+ 
+       <Suspense fallback={null}>
+         <MeetingSearch />
+       </Suspense>
+ 
+       {meetings.length === 0 ? (
+-        <p role="status" className="py-8 text-center text-gray-700">
+-          No meetings found{query ? ` for "${query}"` : ""}.
++        <p role="status" className="text-slate-700">
++          {query
++            ? `No meetings found for "${query}".`
++            : 'No meetings have been scheduled yet.'}
+         </p>
+       ) : (
+-        <ul className="space-y-4">
++        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+           {meetings.map((meeting) => (
+-            <li key={meeting.id}>
+-              <MeetingCard meeting={meeting} />
+-            </li>
++            <MeetingCard key={meeting.id} meeting={meeting} />
+           ))}
+-        </ul>
++        </div>
+       )}
+ 
+       <Suspense fallback={null}>
+         <Pagination totalPages={totalPages} />
+       </Suspense>
+-    </div>
++    </section>
+   );
+ }
+diff --git a/app/api/meetings/[id]/route.ts b/app/api/meetings/[id]/route.ts
+index 0fc9bf0..ca7775c 100644
+--- a/app/api/meetings/[id]/route.ts
++++ b/app/api/meetings/[id]/route.ts
+@@ -4,28 +4,38 @@ interface RouteContext {
+   params: Promise<{ id: string }>;
+ }
+ 
++const MAX_INT4 = 2_147_483_647; // SERIAL limit: larger ids would make PostgreSQL throw
++
+ export async function GET(
+   _request: Request,
+   context: RouteContext
+ ): Promise<Response> {
+   const { id: rawId } = await context.params;
+-  const parsedId = Number(rawId);
+ 
+-  if (!rawId || !Number.isInteger(parsedId) || parsedId <= 0) {
++  // 400: not a plain positive integer (e.g. "abc", "1.5", "1e3") or out of range.
++  if (!/^\d+$/.test(rawId) || Number(rawId) < 1 || Number(rawId) > MAX_INT4) {
+     return Response.json(
+       { error: `Invalid meeting id "${rawId}". ID must be a positive integer.` },
+       { status: 400 }
+     );
+   }
+ 
+-  const meeting = getMeetingById(parsedId);
++  const parsedId = Number(rawId);
+ 
+-  if (!meeting) {
+-    return Response.json(
+-      { error: `No meeting found with id ${parsedId}.` },
+-      { status: 404 }
+-    );
+-  }
++  try {
++    const meeting = await getMeetingById(parsedId);
+ 
+-  return Response.json(meeting, { status: 200 });
++    // 404: a valid id that does not exist (e.g. 9999)
++    if (!meeting) {
++      return Response.json(
++        { error: `No meeting found with id ${parsedId}.` },
++        { status: 404 }
++      );
++    }
++
++    return Response.json(meeting, { status: 200 });
++  } catch (error) {
++    console.error('GET /api/meetings/[id] failed:', error);
++    return Response.json({ error: 'Internal server error.' }, { status: 500 });
++  }
+ }
+diff --git a/app/api/meetings/route.ts b/app/api/meetings/route.ts
+index 2d54e9c..8bcf26f 100644
+--- a/app/api/meetings/route.ts
++++ b/app/api/meetings/route.ts
+@@ -1,8 +1,28 @@
+ import { getMeetings } from '@/lib/meetings-db';
+ import type { SacramentMeeting } from '@/lib/types';
+ 
++/** Accepts only a real calendar date in the format YYYY-MM-DD (rejects 2026-02-30). */
++function isValidDate(value: string): boolean {
++  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
++  return new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
++}
++
+ export async function GET(request: Request): Promise<Response> {
+   const date = new URL(request.url).searchParams.get('date');
+-  const meetings: SacramentMeeting[] = getMeetings(date);
+-  return Response.json(meetings, { status: 200 });
++
++  if (date !== null && !isValidDate(date)) {
++    return Response.json(
++      { error: `Invalid date "${date}". Use the format YYYY-MM-DD.` },
++      { status: 400 }
++    );
++  }
++
++  try {
++    // A valid date with no meetings simply returns an empty array.
++    const meetings: SacramentMeeting[] = await getMeetings(date);
++    return Response.json(meetings, { status: 200 });
++  } catch (error) {
++    console.error('GET /api/meetings failed:', error);
++    return Response.json({ error: 'Internal server error.' }, { status: 500 });
++  }
+ }
+diff --git a/app/meetings/[id]/page.tsx b/app/meetings/[id]/page.tsx
+deleted file mode 100644
+index 39f47b4..0000000
+--- a/app/meetings/[id]/page.tsx
++++ /dev/null
+@@ -1,42 +0,0 @@
+-import { notFound } from 'next/navigation';
+-import MeetingDetail from '@/components/MeetingDetail';
+-import { getBaseUrl } from '@/lib/api';
+-import { getMeetingById } from '@/lib/meetings-db';
+-import type { SacramentMeeting } from '@/lib/types';
+-
+-interface MeetingDetailPageProps {
+-  params: Promise<{ id: string }>;
+-}
+-
+-async function fetchMeetingByIdFromApi(id: number): Promise<SacramentMeeting | null> {
+-  // Read headers outside the try/catch so Next.js can detect dynamic rendering.
+-  const baseUrl = await getBaseUrl();
+-  try {
+-    const response = await fetch(`${baseUrl}/api/meetings/${id}`, {
+-      cache: 'no-store',
+-    });
+-    if (response.status === 404 || response.status === 400) return null;
+-    if (!response.ok) {
+-      throw new Error(`API returned status ${response.status}`);
+-    }
+-    return (await response.json()) as SacramentMeeting;
+-  } catch (error) {
+-    console.error('Falling back to in-memory data:', error);
+-    return getMeetingById(id);
+-  }
+-}
+-
+-export default async function MeetingDetailPage({ params }: MeetingDetailPageProps) {
+-  const { id } = await params;
+-  const numericId = Number(id);
+-  if (!Number.isInteger(numericId) || numericId <= 0) {
+-    notFound();
+-  }
+-
+-  const meeting = await fetchMeetingByIdFromApi(numericId);
+-  if (!meeting) {
+-    notFound();
+-  }
+-
+-  return <MeetingDetail meeting={meeting} />;
+-}
+diff --git a/app/meetings/current/page.tsx b/app/meetings/current/page.tsx
+deleted file mode 100644
+index edce1a8..0000000
+--- a/app/meetings/current/page.tsx
++++ /dev/null
+@@ -1,9 +0,0 @@
+-import { redirect } from 'next/navigation';
+-import { getCurrentMeeting } from '@/lib/meetings-db';
+-
+-export const dynamic = 'force-dynamic';
+-
+-export default function CurrentMeetingRedirectPage() {
+-  const meeting = getCurrentMeeting();
+-  redirect(meeting ? `/meetings/${meeting.id}` : '/meetings');
+-}
+diff --git a/app/meetings/loading.tsx b/app/meetings/loading.tsx
+deleted file mode 100644
+index b590cfe..0000000
+--- a/app/meetings/loading.tsx
++++ /dev/null
+@@ -1,14 +0,0 @@
+-export default function MeetingsLoading() {
+-  return (
+-    <div
+-      role="status"
+-      aria-live="polite"
+-      className="flex flex-col items-center justify-center py-20 space-y-4 bg-white rounded-xl border border-slate-200"
+-    >
+-      <div className="h-10 w-10 rounded-full border-4 border-slate-200 border-t-brand animate-spin" />
+-      <p className="text-sm font-semibold text-slate-700">
+-        Loading sacrament meeting programs...
+-      </p>
+-    </div>
+-  );
+-}
+diff --git a/app/meetings/page.tsx b/app/meetings/page.tsx
+deleted file mode 100644
+index d873d99..0000000
+--- a/app/meetings/page.tsx
++++ /dev/null
+@@ -1,43 +0,0 @@
+-import MeetingCard from '@/components/MeetingCard';
+-import { getBaseUrl } from '@/lib/api';
+-import { getMeetings } from '@/lib/meetings-db';
+-import type { SacramentMeeting } from '@/lib/types';
+-
+-async function fetchMeetingsFromApi(): Promise<SacramentMeeting[]> {
+-  // Read headers outside the try/catch so Next.js can detect dynamic rendering.
+-  const baseUrl = await getBaseUrl();
+-  try {
+-    const response = await fetch(`${baseUrl}/api/meetings`, {
+-      cache: 'no-store',
+-    });
+-    if (!response.ok) {
+-      throw new Error(`API returned status ${response.status}`);
+-    }
+-    return (await response.json()) as SacramentMeeting[];
+-  } catch (error) {
+-    // e.g. the deployment is protected and rejects server-side calls to itself
+-    console.error('Falling back to in-memory data:', error);
+-    return getMeetings();
+-  }
+-}
+-
+-export default async function MeetingsListPage() {
+-  const meetings = await fetchMeetingsFromApi();
+-
+-  return (
+-    <section aria-labelledby="meetings-list-heading" className="space-y-4">
+-      <h1 id="meetings-list-heading" className="text-2xl font-bold">
+-        All Meetings
+-      </h1>
+-      {meetings.length === 0 ? (
+-        <p className="text-slate-700">No meetings have been scheduled yet.</p>
+-      ) : (
+-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+-          {meetings.map((meeting) => (
+-            <MeetingCard key={meeting.id} meeting={meeting} />
+-          ))}
+-        </div>
+-      )}
+-    </section>
+-  );
+-}
+diff --git a/components/Header.tsx b/components/Header.tsx
+index 75a2985..a33e329 100644
+--- a/components/Header.tsx
++++ b/components/Header.tsx
+@@ -1,6 +1,6 @@
+ import Link from 'next/link';
+ import { connection } from 'next/server';
+-import { getTodayISO, WARD_TIME_ZONE } from '@/lib/meetings-db';
++import { getTodayISO, WARD_TIME_ZONE } from '@/lib/meeting-date';
+ import NavLinks from './NavLinks';
+ 
+ export default async function Header() {
+diff --git a/components/MeetingCard.tsx b/components/MeetingCard.tsx
+index a1ac960..95d2a9c 100644
+--- a/components/MeetingCard.tsx
++++ b/components/MeetingCard.tsx
+@@ -23,6 +23,10 @@ const badgeStyles: Record<MeetingType, { label: string; classes: string }> = {
+     label: 'General Conference (Non-Sacrament)',
+     classes: 'bg-purple-100 text-purple-900 border-purple-300',
+   },
++  special: {
++    label: 'Special Sacrament Meeting',
++    classes: 'bg-rose-100 text-rose-900 border-rose-300',
++  },
+ };
+ 
+ export default function MeetingCard({ meeting }: MeetingCardProps) {
+diff --git a/components/MeetingDetail.tsx b/components/MeetingDetail.tsx
+index 2696feb..9cd534c 100644
+--- a/components/MeetingDetail.tsx
++++ b/components/MeetingDetail.tsx
+@@ -12,6 +12,7 @@ const typeDescriptions: Record<MeetingType, { title: string; isSacrament: boolea
+   testimony: { title: 'Fast & Testimony Sacrament Meeting', isSacrament: true },
+   stake: { title: 'Stake Conference Session (Non-Sacrament Meeting)', isSacrament: false },
+   general: { title: 'General Conference Session (Non-Sacrament Meeting)', isSacrament: false },
++  special: { title: 'Special Sacrament Meeting', isSacrament: true },
+ };
+ 
+ export default function MeetingDetail({ meeting }: MeetingDetailProps) {
+diff --git a/components/MeetingSearch.tsx b/components/MeetingSearch.tsx
+index 41deb94..8569fd7 100644
+--- a/components/MeetingSearch.tsx
++++ b/components/MeetingSearch.tsx
+@@ -1,39 +1,60 @@
+-"use client";
++'use client';
+ 
+-import { useSearchParams, usePathname, useRouter } from "next/navigation";
+-import { useDebouncedCallback } from "use-debounce";
++import { useEffect, useRef } from 'react';
++import { usePathname, useRouter, useSearchParams } from 'next/navigation';
++import { useDebouncedCallback } from 'use-debounce';
+ 
+ export default function MeetingSearch() {
+   const searchParams = useSearchParams();
+   const pathname = usePathname();
+-  const { replace } = useRouter();
++  const { push } = useRouter();
++  const inputRef = useRef<HTMLInputElement>(null);
+ 
+-  // O URL é a fonte de verdade: lemos e escrevemos ?query= e ?page=.
+-  // Debounce de 300 ms evita uma consulta à BD por cada tecla.
++  // The URL is the source of truth: we read and write ?query= and ?page=.
++  // The 300 ms debounce avoids a database round-trip on every keystroke.
+   const handleSearch = useDebouncedCallback((term: string) => {
+     const params = new URLSearchParams(searchParams.toString());
+-    params.set("page", "1"); // uma pesquisa nova volta sempre à página 1
++    params.set('page', '1'); // a new search always starts on page 1
+     if (term.trim()) {
+-      params.set("query", term.trim());
++      params.set('query', term.trim());
+     } else {
+-      params.delete("query");
++      params.delete('query');
++    }
++
++    const next = `${pathname}?${params.toString()}`;
++    if (next !== `${pathname}?${searchParams.toString()}`) {
++      // push (not replace) so the browser Back button returns to the previous search
++      push(next, { scroll: false });
+     }
+-    replace(`${pathname}?${params.toString()}`);
+   }, 300);
+ 
++  // The input is uncontrolled (defaultValue), so when the user presses Back/Forward
++  // we copy the query from the URL into the input to keep both in sync.
++  useEffect(() => {
++    const syncInputWithUrl = () => {
++      if (inputRef.current) {
++        inputRef.current.value =
++          new URLSearchParams(window.location.search).get('query') ?? '';
++      }
++    };
++    window.addEventListener('popstate', syncInputWithUrl);
++    return () => window.removeEventListener('popstate', syncInputWithUrl);
++  }, []);
++
+   return (
+-    <div className="mb-6">
++    <div>
+       <label htmlFor="meeting-search" className="sr-only">
+         Search meetings
+       </label>
+       <input
++        ref={inputRef}
+         id="meeting-search"
+         type="search"
+         aria-label="Search meetings by speaker, presiding, conducting, or meeting type"
+         placeholder="Search by speaker, presiding, conducting, or type..."
+-        defaultValue={searchParams.get("query") ?? ""}
+-        onChange={(e) => handleSearch(e.target.value)}
+-        className="w-full rounded-md border border-gray-400 px-4 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-600"
++        defaultValue={searchParams.get('query') ?? ''}
++        onChange={(event) => handleSearch(event.target.value)}
++        className="w-full rounded-lg border border-slate-400 bg-white px-4 py-2.5 text-base text-slate-900 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-700"
+       />
+     </div>
+   );
+diff --git a/db/seed.sql b/db/seed.sql
+index 5a65a45..e72a91a 100644
+--- a/db/seed.sql
++++ b/db/seed.sql
+@@ -1,91 +1,19 @@
+--- 10 reuniões de exemplo (>= 8 exigidas) com tipos, presidentes e oradores variados.
+--- Dá 2 páginas na paginação (5 por página). "Smith" aparece em 3 reuniões
+--- e "regular"/"testimony" em vários registos, para testar a pesquisa.
+--- Os formatos JSON de hinos/oradores/ward_business têm de coincidir com os teus
+--- tipos em lib/types.ts: ajusta as chaves se forem diferentes.
+--- É seguro correr mais de uma vez: ON CONFLICT (date) DO NOTHING.
++-- Seed data: 10 sample meetings (the original in-memory data + extra records,
++-- so the list has 2 pages and every meeting type is represented).
++-- Safe to run more than once: ON CONFLICT (date) DO NOTHING.
+ INSERT INTO meetings
+   (date, meeting_type, presiding, conducting, announcements, opening_hymn,
+    opening_prayer, ward_business, stake_business, sacrament_hymn, speakers,
+    closing_hymn, closing_prayer)
+ VALUES
+-('2026-01-04', 'testimony', 'President David Carter', 'Aaron Reed',
+- ARRAY['Fast Sunday: fast offerings can be given online', 'Young adult activity Friday at 7 PM'],
+- '{"number":2,"title":"The Spirit of God"}', 'Sister Maria Costa',
+- '[]', false,
+- '{"number":169,"title":"As Now We Take the Sacrament"}',
+- '[]',
+- '{"number":136,"title":"I Know That My Redeemer Lives"}', 'Brother Paulo Tembe'),
+-
+-('2026-01-11', 'regular', 'President David Carter', 'Aaron Reed',
+- ARRAY['Institute classes resume Tuesday'],
+- '{"number":85,"title":"How Firm a Foundation"}', 'Brother Daniel Smith',
+- '[{"type":"sustain","name":"Sister Ana Mabunda","calling":"Relief Society Secretary"}]', false,
+- '{"number":170,"title":"God, Our Father, Hear Us Pray"}',
+- '[{"name":"Sister Emma Smith","topic":"Faith in Jesus Christ"},{"name":"Brother Lucas Johnson","topic":"Service"}]',
+- '{"number":19,"title":"We Thank Thee, O God, for a Prophet"}', 'Sister Grace Okafor'),
+-
+-('2026-01-18', 'regular', 'Brother Samuel Lee', 'Aaron Reed',
+- ARRAY['Choir practice after the meeting'],
+- '{"number":26,"title":"Praise to the Man"}', 'Brother Tiago Nhantumbo',
+- '[]', false,
+- '{"number":172,"title":"In Humility, Our Savior"}',
+- '[{"name":"Sister Helena Garcia","topic":"Gratitude"},{"name":"Brother Marcos Brown","topic":"The Book of Mormon"}]',
+- '{"number":98,"title":"I Need Thee Every Hour"}', 'Sister Emma Smith'),
+-
+-('2026-01-25', 'special', 'President David Carter', 'Samuel Lee',
+- ARRAY['Special musical program tonight'],
+- '{"number":2,"title":"The Spirit of God"}', 'Sister Rita Johnson',
+- '[{"type":"release","name":"Brother Marcos Brown","calling":"Activities Committee Chair"}]', false,
+- '{"number":169,"title":"As Now We Take the Sacrament"}',
+- '[{"name":"Brother Daniel Smith","topic":"Temples and family history"}]',
+- '{"number":33,"title":"Now Let Us Rejoice"}', 'Brother Paulo Tembe'),
+-
+-('2026-02-01', 'testimony', 'President David Carter', 'Aaron Reed',
+- ARRAY['Fast Sunday: fast offerings can be given online'],
+- '{"number":30,"title":"Come, Come, Ye Saints"}', 'Sister Helena Garcia',
+- '[]', false,
+- '{"number":170,"title":"God, Our Father, Hear Us Pray"}',
+- '[]',
+- '{"number":136,"title":"I Know That My Redeemer Lives"}', 'Brother Tiago Nhantumbo'),
+-
+-('2026-02-08', 'regular', 'Brother Samuel Lee', 'Aaron Reed',
+- ARRAY['Service project Saturday morning'],
+- '{"number":85,"title":"How Firm a Foundation"}', 'Brother Lucas Johnson',
+- '[]', false,
+- '{"number":172,"title":"In Humility, Our Savior"}',
+- '[{"name":"Sister Rita Johnson","topic":"Hope"},{"name":"Brother Paulo Tembe","topic":"Missionary work"}]',
+- '{"number":237,"title":"Do What Is Right"}', 'Sister Ana Mabunda'),
+-
+-('2026-02-15', 'stake', 'President Michael Torres', 'President David Carter',
+- ARRAY['Stake leaders are visiting the branch today'],
+- '{"number":2,"title":"The Spirit of God"}', 'Sister Grace Okafor',
+- '[]', true,
+- '{"number":169,"title":"As Now We Take the Sacrament"}',
+- '[{"name":"President Michael Torres","topic":"Gathering Israel"},{"name":"Sister Emma Smith","topic":"Strengthening the rising generation"}]',
+- '{"number":19,"title":"We Thank Thee, O God, for a Prophet"}', 'Brother Daniel Smith'),
+-
+-('2026-02-22', 'regular', 'President David Carter', 'Samuel Lee',
+- ARRAY['Family home evening ideas available in the foyer'],
+- '{"number":30,"title":"Come, Come, Ye Saints"}', 'Brother Marcos Brown',
+- '[{"type":"sustain","name":"Brother Tiago Nhantumbo","calling":"Elders Quorum President"}]', false,
+- '{"number":170,"title":"God, Our Father, Hear Us Pray"}',
+- '[{"name":"Brother Tiago Nhantumbo","topic":"Ministering"},{"name":"Sister Maria Costa","topic":"The Atonement"}]',
+- '{"number":98,"title":"I Need Thee Every Hour"}', 'Sister Rita Johnson'),
+-
+-('2026-03-01', 'general', 'President David Carter', 'Aaron Reed',
+- ARRAY['General broadcast viewing follows sacrament meeting'],
+- '{"number":26,"title":"Praise to the Man"}', 'Sister Maria Costa',
+- '[]', false,
+- '{"number":172,"title":"In Humility, Our Savior"}',
+- '[{"name":"Brother Samuel Lee","topic":"Following the living prophet"}]',
+- '{"number":33,"title":"Now Let Us Rejoice"}', 'Brother Lucas Johnson'),
+-
+-('2026-11-15', 'regular', 'President David Carter', 'Aaron Reed',
+- ARRAY['Thanksgiving dinner sign-up in the foyer'],
+- '{"number":2,"title":"The Spirit of God"}', 'Sister Helena Garcia',
+- '[]', false,
+- '{"number":169,"title":"As Now We Take the Sacrament"}',
+- '[{"name":"Sister Grace Okafor","topic":"Gratitude in all things"},{"name":"Brother Samuel Lee","topic":"Christlike service"}]',
+- '{"number":136,"title":"I Know That My Redeemer Lives"}', 'Brother Paulo Tembe')
++('2026-05-03', 'regular', 'Bishop Smith', 'Brother Jones', ARRAY['Ward temple night: Friday, May 8 at 6:30 PM', 'Youth combined activity this Wednesday at 7:00 PM']::text[], '{"number":2,"title":"The Spirit of God"}', 'Sister Williams', '[{"description":"Sustaining of new Primary president"}]', false, '{"number":169,"title":"In Remembrance of Thy Suffering"}', '[{"name":"Sister Brown","topic":"Faith in Jesus Christ","type":"speaker"},{"name":"Youth Choir","topic":"I Stand All Amazed","type":"musical-number"},{"name":"Brother Wilson","topic":"Enduring to the End","type":"speaker"}]', '{"number":31,"title":"O God, Our Help in Ages Past"}', 'Brother Davis'),
++('2026-05-10', 'testimony', 'Bishop Smith', 'Bishop Smith', ARRAY['Fast offerings may be submitted to a member of the bishopric or online', 'Relief Society ministering interviews scheduled this week']::text[], '{"number":136,"title":"I Know That My Redeemer Lives"}', 'Brother Johnson', '[{"description":"Release of Sunday School Gospel Doctrine teachers with heartfelt thanks"},{"description":"Welcome of new ward members"}]', false, '{"number":181,"title":"Jesus of Nazareth, Savior and King"}', '[{"name":"Congregation","topic":"Bearing of Fast and Testimony","type":"speaker"}]', '{"number":67,"title":"Glory to God on High"}', 'Sister Martinez'),
++('2026-05-17', 'regular', 'Bishop Smith', 'Brother Clark', ARRAY['Bishopric youth discussions after the second-hour block', 'Ward choir practice at 3:30 PM in the chapel']::text[], '{"number":85,"title":"How Firm a Foundation"}', 'Brother Anderson', '[]', false, '{"number":193,"title":"I Stand All Amazed"}', '[{"name":"Brother Thomas","topic":"Service and Charity in the Community","type":"speaker"},{"name":"Primary Children Ensemble","topic":"I Am a Child of God","type":"musical-number"},{"name":"Sister White","topic":"Strengthening the Home Through Prayer","type":"speaker"}]', '{"number":252,"title":"Put Your Shoulder to the Wheel"}', 'Sister Lee'),
++('2026-05-24', 'stake', 'Stake President Miller', 'President Miller', ARRAY['Stake Conference general session convenes at the Stake Center at 10:00 AM', 'No ward classes held today']::text[], '{"number":6,"title":"Redeemer of Israel"}', 'Brother King', '[{"description":"Annual Stake Conference general session"}]', true, '{"number":196,"title":"Jesus, Once of Humble Birth"}', '[{"name":"Sister Carla Mendes","topic":"Finding Joy in Keeping Covenants","type":"speaker"},{"name":"Stake Combined Choir","topic":"Come, Thou Fount of Every Blessing","type":"musical-number"},{"name":"President Miller","topic":"Building Zion in Our Stake","type":"speaker"}]', '{"number":89,"title":"The Lord Is My Light"}', 'Sister Young'),
++('2026-05-31', 'general', 'First Presidency', 'General Authorities', ARRAY['Members are invited to view the General Conference broadcast online or at the meetinghouse']::text[], '{"number":19,"title":"We Thank Thee, O God, for a Prophet"}', 'General Authority Seventy', '[]', true, '{"number":175,"title":"O God, the Eternal Father"}', '[{"name":"General Conference Broadcast","topic":"Messages from Living Prophets and Apostles","type":"speaker"},{"name":"Tabernacle Choir","topic":"Press Forward, Saints","type":"musical-number"}]', '{"number":152,"title":"God Be with You Till We Meet Again"}', 'General Officer'),
++('2026-06-07', 'testimony', 'Bishop Smith', 'Bishop Smith', ARRAY['Fast offerings may be submitted to a member of the bishopric or online']::text[], '{"number":30,"title":"Come, Come, Ye Saints"}', 'Brother Tembe', '[]', false, '{"number":172,"title":"In Humility, Our Savior"}', '[{"name":"Congregation","topic":"Bearing of Fast and Testimony","type":"speaker"}]', '{"number":98,"title":"I Need Thee Every Hour"}', 'Sister Nhantumbo'),
++('2026-06-14', 'special', 'Counselor Cossa', 'Brother Mabunda', ARRAY['Special youth-led sacrament meeting', 'Light refreshments after the meeting']::text[], '{"number":2,"title":"The Spirit of God"}', 'Sister Helena', '[{"description":"Recognition of graduating youth"}]', false, '{"number":169,"title":"As Now We Take the Sacrament"}', '[{"name":"Brother Cossa","topic":"Preparing to Serve the Lord","type":"speaker"},{"name":"Youth Choir","topic":"Do What Is Right","type":"musical-number"},{"name":"Sister Nhantumbo","topic":"The Power of Youth Testimony","type":"speaker"}]', '{"number":26,"title":"Praise to the Man"}', 'Brother Tembe'),
++('2026-06-21', 'regular', 'Bishop Smith', 'Brother Clark', ARRAY['Ward choir practice at 3:30 PM in the chapel']::text[], '{"number":85,"title":"How Firm a Foundation"}', 'Brother Anderson', '[]', false, '{"number":193,"title":"I Stand All Amazed"}', '[{"name":"Sister Mendes","topic":"Gratitude in Daily Life","type":"speaker"},{"name":"Brother Wilson","topic":"Ministering as the Savior Ministers","type":"speaker"}]', '{"number":33,"title":"Now Let Us Rejoice"}', 'Sister Lee'),
++('2026-11-08', 'regular', 'Bishop Smith', 'Brother Jones', ARRAY['Welcome visitors and ward members to our Sunday worship service', 'Building cleaning assignment: Group B on Saturday at 8:00 AM']::text[], '{"number":92,"title":"For the Beauty of the Earth"}', 'Sister Chissengue', '[{"description":"Sustaining of newly called Youth Sunday School advisors"}]', false, '{"number":172,"title":"In Humility, Our Savior"}', '[{"name":"Brother Mateus","topic":"Walking in the Covenant Path","type":"speaker"},{"name":"Ward Quartet","topic":"Be Still, My Soul","type":"musical-number"},{"name":"Sister Helena","topic":"The Blessings of the Sacrament","type":"speaker"}]', '{"number":241,"title":"Count Your Many Blessings"}', 'Brother Mabunda'),
++('2026-11-15', 'regular', 'Bishop Smith', 'Brother Jones', ARRAY['Welcome visitors and ward members to our Sunday worship service']::text[], '{"number":136,"title":"I Know That My Redeemer Lives"}', 'Brother Mateus', '[{"description":"Sustaining of a new Elders Quorum secretary"}]', false, '{"number":172,"title":"In Humility, Our Savior"}', '[{"name":"Sister Helena","topic":"Gratitude in All Things","type":"speaker"},{"name":"Ward Quartet","topic":"Be Still, My Soul","type":"musical-number"},{"name":"Brother Mabunda","topic":"Christlike Service","type":"speaker"}]', '{"number":241,"title":"Count Your Many Blessings"}', 'Sister Chissengue')
+ ON CONFLICT (date) DO NOTHING;
+diff --git a/lib/api.ts b/lib/api.ts
+deleted file mode 100644
+index e7b7ca7..0000000
+--- a/lib/api.ts
++++ /dev/null
+@@ -1,11 +0,0 @@
+-import { headers } from 'next/headers';
+-
+-/** Builds the absolute origin of the running app so server components can call our own API routes. */
+-export async function getBaseUrl(): Promise<string> {
+-  const headersList = await headers();
+-  const host = headersList.get('x-forwarded-host') ?? headersList.get('host') ?? 'localhost:3000';
+-  const protocol =
+-    headersList.get('x-forwarded-proto') ??
+-    (host.startsWith('localhost') || host.startsWith('127.') ? 'http' : 'https');
+-  return `${protocol}://${host}`;
+-}
+diff --git a/lib/meeting-date.ts b/lib/meeting-date.ts
+new file mode 100644
+index 0000000..96030b7
+--- /dev/null
++++ b/lib/meeting-date.ts
+@@ -0,0 +1,19 @@
++/** Ward time zone, so "this Sunday" is the same on the server (UTC) and for local members. */
++export const WARD_TIME_ZONE = 'Africa/Maputo';
++
++/** Today's date in the ward time zone as 'YYYY-MM-DD'. */
++export function getTodayISO(now: Date = new Date()): string {
++  return new Intl.DateTimeFormat('en-CA', {
++    timeZone: WARD_TIME_ZONE,
++    year: 'numeric',
++    month: '2-digit',
++    day: '2-digit',
++  }).format(now);
++}
++
++/** The most recent Sunday (today, if today is Sunday) as 'YYYY-MM-DD'. */
++export function getMostRecentSundayISO(now: Date = new Date()): string {
++  const date = new Date(`${getTodayISO(now)}T00:00:00Z`);
++  date.setUTCDate(date.getUTCDate() - date.getUTCDay());
++  return date.toISOString().slice(0, 10);
++}
+diff --git a/lib/meetings-db.ts b/lib/meetings-db.ts
+index 5e16bbb..96959df 100644
+--- a/lib/meetings-db.ts
++++ b/lib/meetings-db.ts
+@@ -1,64 +1,67 @@
+-import { neon } from "@neondatabase/serverless";
+-import type { SacramentMeeting } from "@/lib/types";
++import { neon } from '@neondatabase/serverless';
++import { getMostRecentSundayISO } from './meeting-date';
++import type { SacramentMeeting } from './types';
+ 
+ export const PAGE_SIZE = 5;
+ 
+-// O cliente é criado dentro de uma função (e não no topo do ficheiro) para que
+-// o `npm run build` não rebente quando DATABASE_URL ainda não está definida.
+-// neon() devolve um "tagged template": cada valor interpolado vira um parâmetro
+-// ($1, $2...), por isso não há risco de SQL injection.
++/**
++ * The client is created inside a function (not at module level) so `next build`
++ * does not fail when DATABASE_URL is not defined yet.
++ * neon() returns a tagged template: every interpolated value becomes a query
++ * parameter ($1, $2, ...), so user input can never be injected as SQL.
++ */
+ function db() {
+   const url = process.env.DATABASE_URL;
+   if (!url) {
+     throw new Error(
+-      "DATABASE_URL is not set. Run `vercel env pull .env.local` and restart the dev server."
++      'DATABASE_URL is not set. Run `vercel env pull .env.local` and restart the dev server.'
+     );
+   }
+   return neon(url);
+ }
+ 
+-// Linha como vem da base de dados (snake_case).
++/** A row exactly as stored in PostgreSQL (snake_case columns). */
+ type MeetingRow = {
+   id: number;
+   date: string;
+-  meeting_type: SacramentMeeting["meetingType"];
++  meeting_type: SacramentMeeting['meetingType'];
+   presiding: string;
+   conducting: string;
+-  announcements: string[];
+-  opening_hymn: SacramentMeeting["openingHymn"];
++  announcements: string[] | null;
++  opening_hymn: SacramentMeeting['openingHymn'];
+   opening_prayer: string;
+-  ward_business: SacramentMeeting["wardBusiness"];
+-  stake_business: boolean;
+-  sacrament_hymn: SacramentMeeting["sacramentHymn"];
+-  speakers: SacramentMeeting["speakers"];
+-  closing_hymn: SacramentMeeting["closingHymn"];
++  ward_business: SacramentMeeting['wardBusiness'] | null;
++  stake_business: boolean | null;
++  sacrament_hymn: SacramentMeeting['sacramentHymn'];
++  speakers: SacramentMeeting['speakers'] | null;
++  closing_hymn: SacramentMeeting['closingHymn'];
+   closing_prayer: string;
+ };
+ 
+-// Converte snake_case (BD) para o tipo camelCase da aplicação.
+-// AJUSTA os nomes à tua interface SacramentMeeting em lib/types.ts.
+-function mapRow(r: MeetingRow): SacramentMeeting {
++/** Converts a database row (snake_case) into the app's SacramentMeeting type. */
++function mapRow(row: MeetingRow): SacramentMeeting {
+   return {
+-    id: r.id,
+-    date: r.date,
+-    meetingType: r.meeting_type,
+-    presiding: r.presiding,
+-    conducting: r.conducting,
+-    announcements: r.announcements,
+-    openingHymn: r.opening_hymn,
+-    openingPrayer: r.opening_prayer,
+-    wardBusiness: r.ward_business,
+-    stakeBusiness: r.stake_business,
+-    sacramentHymn: r.sacrament_hymn,
+-    speakers: r.speakers,
+-    closingHymn: r.closing_hymn,
+-    closingPrayer: r.closing_prayer,
++    id: row.id,
++    date: row.date,
++    meetingType: row.meeting_type,
++    presiding: row.presiding,
++    conducting: row.conducting,
++    announcements: row.announcements ?? [],
++    openingHymn: row.opening_hymn,
++    openingPrayer: row.opening_prayer,
++    wardBusiness: row.ward_business ?? [],
++    stakeBusiness: row.stake_business ?? false,
++    sacramentHymn: row.sacrament_hymn,
++    speakers: row.speakers ?? [],
++    closingHymn: row.closing_hymn,
++    closingPrayer: row.closing_prayer,
+   };
+ }
+ 
+-/** Todas as reuniões (ou só as de uma data YYYY-MM-DD). */
+-export async function getMeetings(date?: string): Promise<SacramentMeeting[]> {
++/** All meetings (newest first), or only the ones on a date ('YYYY-MM-DD'). */
++export async function getMeetings(date?: string | null): Promise<SacramentMeeting[]> {
+   const sql = db();
++  // to_char() returns the DATE as a plain 'YYYY-MM-DD' string (no timezone shift).
+   const rows = date
+     ? await sql`
+         SELECT id, to_char(date, 'YYYY-MM-DD') AS date, meeting_type, presiding,
+@@ -75,13 +78,11 @@ export async function getMeetings(date?: string): Promise<SacramentMeeting[]> {
+                closing_hymn, closing_prayer
+         FROM meetings
+         ORDER BY date DESC`;
+-  return rows.map((r) => mapRow(r as MeetingRow));
++  return rows.map((row) => mapRow(row as MeetingRow));
+ }
+ 
+-/** Uma reunião pelo id, ou undefined se não existir. */
+-export async function getMeetingById(
+-  id: number
+-): Promise<SacramentMeeting | undefined> {
++/** One meeting by id, or null if it does not exist. */
++export async function getMeetingById(id: number): Promise<SacramentMeeting | null> {
+   const sql = db();
+   const rows = await sql`
+     SELECT id, to_char(date, 'YYYY-MM-DD') AS date, meeting_type, presiding,
+@@ -90,20 +91,41 @@ export async function getMeetingById(
+            closing_hymn, closing_prayer
+     FROM meetings
+     WHERE id = ${id}`;
+-  return rows[0] ? mapRow(rows[0] as MeetingRow) : undefined;
++  return rows[0] ? mapRow(rows[0] as MeetingRow) : null;
++}
++
++/**
++ * Meeting for the most recent Sunday (in the ward time zone). If none exists
++ * for that exact date, falls back to the latest meeting on or before it;
++ * returns null if there is none.
++ */
++export async function getCurrentMeeting(now: Date = new Date()): Promise<SacramentMeeting | null> {
++  const sql = db();
++  const sundayISO = getMostRecentSundayISO(now);
++  const rows = await sql`
++    SELECT id, to_char(date, 'YYYY-MM-DD') AS date, meeting_type, presiding,
++           conducting, announcements, opening_hymn, opening_prayer,
++           ward_business, stake_business, sacrament_hymn, speakers,
++           closing_hymn, closing_prayer
++    FROM meetings
++    WHERE date <= ${sundayISO}
++    ORDER BY date DESC
++    LIMIT 1`;
++  return rows[0] ? mapRow(rows[0] as MeetingRow) : null;
+ }
+ 
+ /**
+- * Pesquisa + paginação para a lista /meetings.
+- * Procura em presiding, conducting, meeting_type e nos oradores (JSONB como texto).
++ * Search + pagination for the /meetings list.
++ * Matches the presiding / conducting names, the meeting type and the NAMES of
++ * speakers / musical numbers (case-insensitive). PAGE_SIZE meetings per page.
+  */
+ export async function searchMeetings(
+   query: string,
+   page: number
+ ): Promise<{ meetings: SacramentMeeting[]; totalPages: number }> {
+   const sql = db();
+-  // Escapa \ % _ para que o utilizador não os use como wildcards do LIKE.
+-  const pattern = `%${query.trim().replace(/[\\%_]/g, "\\$&")}%`;
++  // Escape \ % _ so the user cannot use them as LIKE wildcards.
++  const pattern = `%${query.trim().replace(/[\\%_]/g, '\\$&')}%`;
+   const safePage = Number.isFinite(page) && page >= 1 ? Math.floor(page) : 1;
+   const offset = (safePage - 1) * PAGE_SIZE;
+ 
+@@ -116,7 +138,10 @@ export async function searchMeetings(
+     WHERE presiding ILIKE ${pattern}
+        OR conducting ILIKE ${pattern}
+        OR meeting_type ILIKE ${pattern}
+-       OR speakers::text ILIKE ${pattern}
++       OR EXISTS (
++            SELECT 1 FROM jsonb_array_elements(speakers) AS s
++            WHERE s->>'name' ILIKE ${pattern}
++          )
+     ORDER BY date DESC
+     LIMIT ${PAGE_SIZE} OFFSET ${offset}`;
+ 
+@@ -126,35 +151,38 @@ export async function searchMeetings(
+     WHERE presiding ILIKE ${pattern}
+        OR conducting ILIKE ${pattern}
+        OR meeting_type ILIKE ${pattern}
+-       OR speakers::text ILIKE ${pattern}`;
++       OR EXISTS (
++            SELECT 1 FROM jsonb_array_elements(speakers) AS s
++            WHERE s->>'name' ILIKE ${pattern}
++          )`;
+ 
+   return {
+-    meetings: rows.map((r) => mapRow(r as MeetingRow)),
++    meetings: rows.map((row) => mapRow(row as MeetingRow)),
+     totalPages: Math.max(1, Math.ceil(Number(count[0].total) / PAGE_SIZE)),
+   };
+ }
+ 
+-// ---- Stubs: serão ligados à base de dados na Semana 04 (formulários) ----
++// ---- Stubs: these will be wired to the database in Week 04 (forms) ----
+ 
+ export async function addMeeting(
+   // eslint-disable-next-line @typescript-eslint/no-unused-vars
+-  _meeting: Omit<SacramentMeeting, "id">
++  _meeting: Omit<SacramentMeeting, 'id'>
+ ): Promise<SacramentMeeting> {
+-  throw new Error("addMeeting: not implemented until Week 04");
++  throw new Error('addMeeting: not implemented until Week 04');
+ }
+ 
+ export async function updateMeeting(
+   // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   _id: number,
+   // eslint-disable-next-line @typescript-eslint/no-unused-vars
+-  _changes: Partial<Omit<SacramentMeeting, "id">>
+-): Promise<SacramentMeeting | undefined> {
+-  throw new Error("updateMeeting: not implemented until Week 04");
++  _changes: Partial<Omit<SacramentMeeting, 'id'>>
++): Promise<SacramentMeeting | null> {
++  throw new Error('updateMeeting: not implemented until Week 04');
+ }
+ 
+ export async function deleteMeeting(
+   // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   _id: number
+ ): Promise<boolean> {
+-  throw new Error("deleteMeeting: not implemented until Week 04");
++  throw new Error('deleteMeeting: not implemented until Week 04');
+ }
+diff --git a/lib/types.ts b/lib/types.ts
+index d1efe13..628fa00 100644
+--- a/lib/types.ts
++++ b/lib/types.ts
+@@ -2,7 +2,8 @@ export type MeetingType =
+   | 'testimony'
+   | 'regular'
+   | 'stake'
+-  | 'general';
++  | 'general'
++  | 'special';
+ 
+ export interface Hymn {
+   number: number;
+diff --git a/package-lock.json b/package-lock.json
+index f2217a9..0fedcaf 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -8,9 +8,11 @@
+       "name": "sacrament-meetings",
+       "version": "0.1.0",
+       "dependencies": {
++        "@neondatabase/serverless": "^1.2.1",
+         "next": "^16.0.0",
+         "react": "^19.0.0",
+-        "react-dom": "^19.0.0"
++        "react-dom": "^19.0.0",
++        "use-debounce": "^10.1.1"
+       },
+       "devDependencies": {
+         "@tailwindcss/postcss": "^4",
+@@ -1047,6 +1049,15 @@
+         "@jridgewell/sourcemap-codec": "^1.4.14"
+       }
+     },
++    "node_modules/@neondatabase/serverless": {
++      "version": "1.2.1",
++      "resolved": "https://registry.npmjs.org/@neondatabase/serverless/-/serverless-1.2.1.tgz",
++      "integrity": "sha512-PI2JjuyEFE7oZDTkV/s6WP4KEceCwnjQHClfunhysuIATtvcVTBLdA4UgHTnJo7C0mkK+OZ6U7SV1NDnYa0HgA==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=19.0.0"
++      }
++    },
+     "node_modules/@next/env": {
+       "version": "16.4.6",
+       "resolved": "https://registry.npmjs.org/@next/env/-/env-16.4.6.tgz",
+@@ -6598,6 +6609,18 @@
+         "punycode": "^2.1.0"
+       }
+     },
++    "node_modules/use-debounce": {
++      "version": "10.1.1",
++      "resolved": "https://registry.npmjs.org/use-debounce/-/use-debounce-10.1.1.tgz",
++      "integrity": "sha512-kvds8BHR2k28cFsxW8k3nc/tRga2rs1RHYCqmmGqb90MEeE++oALwzh2COiuBLO1/QXiOuShXoSN2ZpWnMmvuQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 16.0.0"
++      },
++      "peerDependencies": {
++        "react": "*"
++      }
++    },
+     "node_modules/which": {
+       "version": "2.0.2",
+       "resolved": "https://registry.npmjs.org/which/-/which-2.0.2.tgz",
+diff --git a/package.json b/package.json
+index 078065a..c357779 100644
+--- a/package.json
++++ b/package.json
+@@ -9,9 +9,11 @@
+     "lint": "eslint"
+   },
+   "dependencies": {
++    "@neondatabase/serverless": "^1.2.1",
+     "next": "^16.0.0",
+     "react": "^19.0.0",
+-    "react-dom": "^19.0.0"
++    "react-dom": "^19.0.0",
++    "use-debounce": "^10.1.1"
+   },
+   "devDependencies": {
+     "@tailwindcss/postcss": "^4",
+diff --git a/reference/app/(public)/meetings/[id]/page.tsx b/reference/app/(public)/meetings/[id]/page.tsx
+deleted file mode 100644
+index d454ccd..0000000
+--- a/reference/app/(public)/meetings/[id]/page.tsx
++++ /dev/null
+@@ -1,20 +0,0 @@
+-import { notFound } from "next/navigation";
+-import { getMeetingById } from "@/lib/meetings-db";
+-import MeetingDetail from "@/components/MeetingDetail";
+-
+-export default async function MeetingPage({
+-  params,
+-}: {
+-  params: Promise<{ id: string }>;
+-}) {
+-  const { id } = await params;
+-
+-  if (!/^\d+$/.test(id) || Number(id) < 1 || Number(id) > 2_147_483_647) {
+-    notFound();
+-  }
+-
+-  const meeting = await getMeetingById(Number(id));
+-  if (!meeting) notFound();
+-
+-  return <MeetingDetail meeting={meeting} />;
+-}
+diff --git a/reference/app/(public)/meetings/current/page.tsx b/reference/app/(public)/meetings/current/page.tsx
+deleted file mode 100644
+index a292a06..0000000
+--- a/reference/app/(public)/meetings/current/page.tsx
++++ /dev/null
+@@ -1,29 +0,0 @@
+-import { redirect } from "next/navigation";
+-import { getMeetings } from "@/lib/meetings-db";
+-
+-// Fuso horário FIXO do ramo: servidor e browser passam a concordar sobre
+-// "este domingo" (resolve o comentário do Copilot sobre fusos horários).
+-// Muda para o fuso do teu ramo/ala se for outro.
+-const BRANCH_TIME_ZONE = "America/Denver";
+-
+-export const dynamic = "force-dynamic"; // depende da data de hoje: nunca em cache
+-
+-// Devolve YYYY-MM-DD do domingo de hoje (se hoje for domingo) ou do próximo.
+-function upcomingSunday(timeZone: string): string {
+-  const today = new Intl.DateTimeFormat("en-CA", {
+-    timeZone,
+-    year: "numeric",
+-    month: "2-digit",
+-    day: "2-digit",
+-  }).format(new Date()); // en-CA => YYYY-MM-DD
+-  const [y, m, d] = today.split("-").map(Number);
+-  const date = new Date(Date.UTC(y, m - 1, d));
+-  date.setUTCDate(date.getUTCDate() + ((7 - date.getUTCDay()) % 7));
+-  return date.toISOString().slice(0, 10);
+-}
+-
+-export default async function CurrentMeetingPage() {
+-  // Os ids agora são números da BD (SERIAL), por isso procuramos pela DATA.
+-  const [meeting] = await getMeetings(upcomingSunday(BRANCH_TIME_ZONE));
+-  redirect(meeting ? `/meetings/${meeting.id}` : "/meetings");
+-}
+diff --git a/reference/app/api/meetings/[id]/route.ts b/reference/app/api/meetings/[id]/route.ts
+deleted file mode 100644
+index f3735a2..0000000
+--- a/reference/app/api/meetings/[id]/route.ts
++++ /dev/null
+@@ -1,31 +0,0 @@
+-import { NextRequest, NextResponse } from "next/server";
+-import { getMeetingById } from "@/lib/meetings-db";
+-
+-const MAX_INT4 = 2_147_483_647; // limite do SERIAL; acima disto a BD dá erro
+-
+-export async function GET(
+-  _request: NextRequest,
+-  { params }: { params: Promise<{ id: string }> }
+-) {
+-  const { id } = await params;
+-
+-  // 400: id não numérico (ex.: "abc") ou fora do intervalo válido.
+-  if (!/^\d+$/.test(id) || Number(id) < 1 || Number(id) > MAX_INT4) {
+-    return NextResponse.json(
+-      { error: "Invalid meeting id. It must be a positive integer." },
+-      { status: 400 }
+-    );
+-  }
+-
+-  try {
+-    const meeting = await getMeetingById(Number(id));
+-    // 404: id válido mas sem registo (ex.: 9999)
+-    if (!meeting) {
+-      return NextResponse.json({ error: "Meeting not found" }, { status: 404 });
+-    }
+-    return NextResponse.json(meeting);
+-  } catch (error) {
+-    console.error("GET /api/meetings/[id] failed:", error);
+-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+-  }
+-}
+diff --git a/reference/app/api/meetings/route.ts b/reference/app/api/meetings/route.ts
+deleted file mode 100644
+index 45fabac..0000000
+--- a/reference/app/api/meetings/route.ts
++++ /dev/null
+@@ -1,27 +0,0 @@
+-import { NextRequest, NextResponse } from "next/server";
+-import { getMeetings } from "@/lib/meetings-db";
+-
+-// Aceita só YYYY-MM-DD e uma data real (rejeita 2026-02-30, por exemplo).
+-function isValidDate(value: string): boolean {
+-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+-  return new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+-}
+-
+-export async function GET(request: NextRequest) {
+-  const date = request.nextUrl.searchParams.get("date") ?? undefined;
+-
+-  if (date !== undefined && !isValidDate(date)) {
+-    return NextResponse.json(
+-      { error: "Invalid date. Use the format YYYY-MM-DD." },
+-      { status: 400 }
+-    );
+-  }
+-
+-  try {
+-    const meetings = await getMeetings(date); // agora é async: await obrigatório
+-    return NextResponse.json(meetings); // data sem registo -> []
+-  } catch (error) {
+-    console.error("GET /api/meetings failed:", error);
+-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+-  }
+-}

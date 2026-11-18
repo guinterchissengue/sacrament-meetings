@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* Design tokens: available as Tailwind utilities (bg-brand, text-ink, font-serif...) */
+@theme inline {
+  --color-brand: #1e40af;
+  --color-brand-dark: #1e3a8a;
+  --color-surface: #ffffff;
+  --color-page: #f8fafc;
+  --color-ink: #0f172a;
+  --color-ink-muted: #334155;
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-merriweather), ui-serif, Georgia, serif;
+}
+
+:root {
+  --spacing-container: 72rem;
+}
+
+body {
+  background-color: var(--color-page);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+}
+
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+}
