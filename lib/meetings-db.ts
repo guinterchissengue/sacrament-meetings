@@ -1,6 +1,6 @@
 import { neon } from '@neondatabase/serverless';
 import { getMostRecentSundayISO } from './meeting-date';
-import type { SacramentMeeting } from './types';
+import type { MeetingInput, SacramentMeeting } from './types';
 
 export const PAGE_SIZE = 5;
 
@@ -162,27 +162,78 @@ export async function searchMeetings(
   };
 }
 
-// ---- Stubs: these will be wired to the database in Week 04 (forms) ----
+// ---- Mutations (Week 04) ----
 
-export async function addMeeting(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _meeting: Omit<SacramentMeeting, 'id'>
-): Promise<SacramentMeeting> {
-  throw new Error('addMeeting: not implemented until Week 04');
+/** Inserts a new meeting and returns it (with its generated id). */
+export async function addMeeting(meeting: MeetingInput): Promise<SacramentMeeting> {
+  const sql = db();
+  const rows = await sql`
+    INSERT INTO meetings (
+      date, meeting_type, presiding, conducting, announcements,
+      opening_hymn, opening_prayer, ward_business, stake_business,
+      sacrament_hymn, speakers, closing_hymn, closing_prayer
+    )
+    VALUES (
+      ${meeting.date}::date,
+      ${meeting.meetingType},
+      ${meeting.presiding},
+      ${meeting.conducting},
+      ${meeting.announcements ?? []}::text[],
+      ${JSON.stringify(meeting.openingHymn)}::jsonb,
+      ${meeting.openingPrayer},
+      ${JSON.stringify(meeting.wardBusiness)}::jsonb,
+      ${meeting.stakeBusiness},
+      ${JSON.stringify(meeting.sacramentHymn)}::jsonb,
+      ${JSON.stringify(meeting.speakers)}::jsonb,
+      ${JSON.stringify(meeting.closingHymn)}::jsonb,
+      ${meeting.closingPrayer}
+    )
+    RETURNING id, to_char(date, 'YYYY-MM-DD') AS date, meeting_type, presiding,
+              conducting, announcements, opening_hymn, opening_prayer,
+              ward_business, stake_business, sacrament_hymn, speakers,
+              closing_hymn, closing_prayer`;
+  return mapRow(rows[0] as MeetingRow);
 }
 
+/**
+ * Updates a meeting. Only the fields present in `changes` are replaced.
+ * Returns the updated meeting, or null if the id does not exist.
+ */
 export async function updateMeeting(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _id: number,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _changes: Partial<Omit<SacramentMeeting, 'id'>>
+  id: number,
+  changes: Partial<MeetingInput>
 ): Promise<SacramentMeeting | null> {
-  throw new Error('updateMeeting: not implemented until Week 04');
+  const current = await getMeetingById(id);
+  if (!current) return null;
+
+  const next = { ...current, ...changes };
+  const sql = db();
+  const rows = await sql`
+    UPDATE meetings
+    SET date = ${next.date}::date,
+        meeting_type = ${next.meetingType},
+        presiding = ${next.presiding},
+        conducting = ${next.conducting},
+        announcements = ${next.announcements ?? []}::text[],
+        opening_hymn = ${JSON.stringify(next.openingHymn)}::jsonb,
+        opening_prayer = ${next.openingPrayer},
+        ward_business = ${JSON.stringify(next.wardBusiness)}::jsonb,
+        stake_business = ${next.stakeBusiness},
+        sacrament_hymn = ${JSON.stringify(next.sacramentHymn)}::jsonb,
+        speakers = ${JSON.stringify(next.speakers)}::jsonb,
+        closing_hymn = ${JSON.stringify(next.closingHymn)}::jsonb,
+        closing_prayer = ${next.closingPrayer}
+    WHERE id = ${id}
+    RETURNING id, to_char(date, 'YYYY-MM-DD') AS date, meeting_type, presiding,
+              conducting, announcements, opening_hymn, opening_prayer,
+              ward_business, stake_business, sacrament_hymn, speakers,
+              closing_hymn, closing_prayer`;
+  return rows[0] ? mapRow(rows[0] as MeetingRow) : null;
 }
 
-export async function deleteMeeting(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _id: number
-): Promise<boolean> {
-  throw new Error('deleteMeeting: not implemented until Week 04');
+/** Deletes a meeting. Returns false if the id does not exist. */
+export async function deleteMeeting(id: number): Promise<boolean> {
+  const sql = db();
+  const rows = await sql`DELETE FROM meetings WHERE id = ${id} RETURNING id`;
+  return rows.length > 0;
 }

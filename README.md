@@ -11,7 +11,9 @@ Next.js (App Router) + TypeScript + Tailwind CSS app to plan, view and print wee
 | `/meetings/current` | Redirects to the most recent Sunday's meeting (ward time zone, resolved on the server) |
 | `GET /api/meetings[?date=YYYY-MM-DD]` | List / filter meetings (400 if the date is invalid) |
 | `GET /api/meetings/[id]` | 200 meeting, 400 invalid id, 404 not found |
-| `/meetings/new`, `/meetings/[id]/edit` | Admin placeholders (forms arrive in Week 04) |
+| `/meetings/new`, `/meetings/[id]/edit` | Admin forms (create / edit) with server-side Zod validation; a non-existent id shows a not-found page |
+
+Mutations (create, update, delete) are Server Actions in `lib/actions.ts`. Unexpected errors in the meetings routes are caught by `error.tsx`.
 
 Route groups: `app/(public)` holds the member-facing pages (with their own layout and loading skeleton) and `app/(admin)` holds the leader-facing pages. Group folders do not appear in URLs.
 

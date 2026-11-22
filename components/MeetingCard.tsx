@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import DeleteMeetingButton from '@/components/DeleteMeetingButton';
+import { deleteMeeting } from '@/lib/actions';
 import { formatMeetingDate } from '@/lib/format';
 import type { MeetingType, SacramentMeeting } from '@/lib/types';
 
@@ -86,6 +88,20 @@ export default function MeetingCard({ meeting }: MeetingCardProps) {
       >
         View &amp; Print Program
       </Link>
+
+      <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-sm">
+        <Link
+          href={`/meetings/${meeting.id}/edit`}
+          aria-label={`Edit meeting on ${formatMeetingDate(meeting.date)}`}
+          className="font-semibold text-slate-800 underline-offset-2 hover:underline focus:outline-none focus:ring-2 focus:ring-slate-700"
+        >
+          Edit
+        </Link>
+
+        <form action={deleteMeeting.bind(null, meeting.id)}>
+          <DeleteMeetingButton meetingLabel={formatMeetingDate(meeting.date)} />
+        </form>
+      </div>
     </article>
   );
 }

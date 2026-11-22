@@ -12,6 +12,7 @@ const navItems: NavItem[] = [
   { label: 'Home', href: '/' },
   { label: 'All Meetings', href: '/meetings' },
   { label: "This Sunday's Program", href: '/meetings/current' },
+  { label: 'New Meeting', href: '/meetings/new' },
 ];
 
 export default function NavLinks() {
@@ -26,7 +27,9 @@ export default function NavLinks() {
         {navItems.map((item) => {
           const isActive =
             item.href === '/meetings'
-              ? pathname.startsWith('/meetings') && pathname !== '/meetings/current'
+              ? pathname.startsWith('/meetings') &&
+              pathname !== '/meetings/current' &&
+              pathname !== '/meetings/new'
               : pathname === item.href;
 
           return (
