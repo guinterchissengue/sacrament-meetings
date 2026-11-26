@@ -10,7 +10,7 @@ export const PAGE_SIZE = 5;
  * neon() returns a tagged template: every interpolated value becomes a query
  * parameter ($1, $2, ...), so user input can never be injected as SQL.
  */
-function db() {
+export function db() {
   const url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error(

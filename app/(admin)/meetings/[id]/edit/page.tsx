@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import MeetingForm from '@/components/MeetingForm';
 import { updateMeeting } from '@/lib/actions';
@@ -5,6 +6,11 @@ import { meetingToFormValues } from '@/lib/meeting-form';
 import { getMeetingById } from '@/lib/meetings-db';
 
 const MAX_INT4 = 2_147_483_647; // SERIAL limit: larger ids would make PostgreSQL throw
+
+export const metadata: Metadata = {
+  title: 'Edit Meeting',
+  description: 'Edit a sacrament meeting program.',
+};
 
 export default async function EditMeetingPage({
   params,

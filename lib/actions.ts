@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { auth } from '@/auth';
 import {
   addMeeting,
   updateMeeting as updateMeetingRecord,
@@ -242,6 +243,17 @@ function validateMeetingForm(formData: FormData): ValidationResult {
 
 const MAX_INT4 = 2_147_483_647; // SERIAL limit: larger ids would make PostgreSQL throw
 
+/**
+ * Every mutation is checked here too: the proxy only protects pages, but a Server Action
+ * can be called from any page (the Delete button is on the public list).
+ */
+async function requireSession() {
+  const session = await auth();
+  if (!session?.user) {
+    redirect('/login');
+  }
+}
+
 function isValidId(id: number): boolean {
   return Number.isInteger(id) && id >= 1 && id <= MAX_INT4;
 }
@@ -275,6 +287,7 @@ export async function createMeeting(
   prevState: MeetingFormState,
   formData: FormData
 ): Promise<MeetingFormState> {
+  await requireSession();
   const validation = validateMeetingForm(formData);
 
   if (!validation.success) {
@@ -305,6 +318,7 @@ export async function updateMeeting(
   prevState: MeetingFormState,
   formData: FormData
 ): Promise<MeetingFormState> {
+  await requireSession();
   const validation = validateMeetingForm(formData);
 
   if (!validation.success) {
@@ -350,6 +364,7 @@ export async function updateMeeting(
  * <form action={deleteMeeting.bind(null, meeting.id)}>
  */
 export async function deleteMeeting(id: number): Promise<void> {
+  await requireSession();
   if (!isValidId(id)) {
     throw new Error('Invalid meeting id.');
   }

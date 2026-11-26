@@ -3,6 +3,7 @@ import { Merriweather, Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import { SITE_DESCRIPTION, SITE_NAME, getSiteUrl } from '@/lib/site';
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -18,9 +19,21 @@ const merriweather = Merriweather({
 });
 
 export const metadata: Metadata = {
-  title: 'Sacrament Meeting Planner | Maxixe Ward',
-  description:
-    'Plan, review, and print weekly Sacrament Meeting agendas, hymns, speakers, and ward business.',
+  metadataBase: new URL(getSiteUrl()),
+  title: {
+    default: 'Sacrament Meeting Planner | Maxixe Ward',
+    template: '%s | Maxixe Ward Planner',
+  },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  openGraph: {
+    type: 'website',
+    siteName: SITE_NAME,
+    title: 'Sacrament Meeting Planner | Maxixe Ward',
+    description: SITE_DESCRIPTION,
+    locale: 'en_US',
+  },
+  twitter: { card: 'summary_large_image' },
 };
 
 export default function RootLayout({

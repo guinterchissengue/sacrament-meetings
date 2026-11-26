@@ -17,3 +17,12 @@ CREATE TABLE IF NOT EXISTS meetings (
   closing_hymn   JSONB         NOT NULL,
   closing_prayer VARCHAR(255)  NOT NULL
 );
+
+-- Week 05: bishopric accounts (passwords are stored as bcrypt hashes, never as plain text).
+-- Create the first account with:  node --env-file=.env scripts/create-user.mjs <email> <password> "<name>"
+CREATE TABLE IF NOT EXISTS users (
+  id            SERIAL        PRIMARY KEY,
+  name          VARCHAR(100)  NOT NULL,
+  email         VARCHAR(255)  NOT NULL UNIQUE,
+  password_hash TEXT          NOT NULL
+);

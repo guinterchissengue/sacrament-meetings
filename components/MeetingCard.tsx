@@ -6,6 +6,8 @@ import type { MeetingType, SacramentMeeting } from '@/lib/types';
 
 interface MeetingCardProps {
   meeting: SacramentMeeting;
+  /** Show Edit and Delete (only for a signed-in bishopric member). */
+  canManage?: boolean;
 }
 
 const badgeStyles: Record<MeetingType, { label: string; classes: string }> = {
@@ -31,7 +33,7 @@ const badgeStyles: Record<MeetingType, { label: string; classes: string }> = {
   },
 };
 
-export default function MeetingCard({ meeting }: MeetingCardProps) {
+export default function MeetingCard({ meeting, canManage = false }: MeetingCardProps) {
   const badge = badgeStyles[meeting.meetingType];
   const speakerCount = meeting.speakers.filter((s) => s.type === 'speaker').length;
   const musicCount = meeting.speakers.filter((s) => s.type === 'musical-number').length;
@@ -89,6 +91,7 @@ export default function MeetingCard({ meeting }: MeetingCardProps) {
         View &amp; Print Program
       </Link>
 
+      {canManage && (
       <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-sm">
         <Link
           href={`/meetings/${meeting.id}/edit`}
@@ -102,6 +105,7 @@ export default function MeetingCard({ meeting }: MeetingCardProps) {
           <DeleteMeetingButton meetingLabel={formatMeetingDate(meeting.date)} />
         </form>
       </div>
+      )}
     </article>
   );
 }

@@ -1,9 +1,25 @@
+import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
+import { auth } from '@/auth';
 import MeetingCard from '@/components/MeetingCard';
 import MeetingSearch from '@/components/MeetingSearch';
 import Pagination from '@/components/Pagination';
 import { searchMeetings } from '@/lib/meetings-db';
+import { OG_IMAGE } from '@/lib/site';
+
+const description =
+  'Browse and search every scheduled sacrament meeting of the Maxixe Ward: hymns, speakers, and ward business.';
+
+export const metadata: Metadata = {
+  title: 'All Meetings',
+  description,
+  openGraph: {
+    title: 'All Meetings | Maxixe Ward Planner',
+    description,
+    images: [OG_IMAGE],
+  },
+};
 
 type SearchParams = Promise<{
   query?: string | string[];
@@ -20,6 +36,8 @@ export default async function MeetingsListPage({
   searchParams: SearchParams;
 }) {
   const params = await searchParams;
+  const session = await auth();
+  const canManage = Boolean(session?.user);
   const query = first(params.query).trim().slice(0, 100);
   const requestedPage = Math.min(
     1_000_000,
@@ -55,7 +73,7 @@ export default async function MeetingsListPage({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {meetings.map((meeting) => (
-            <MeetingCard key={meeting.id} meeting={meeting} />
+            <MeetingCard key={meeting.id} meeting={meeting} canManage={canManage} />
           ))}
         </div>
       )}
